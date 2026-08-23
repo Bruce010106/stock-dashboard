@@ -39,7 +39,7 @@ npm run dev
 
 访问 <http://localhost:3000>。
 
-`TUSHARE_TOKEN` 只允许配置在 `.env.local` 或 Vercel 环境变量中，不能使用 `NEXT_PUBLIC_` 前缀。留空时，实时扫描仍然可以运行，但近 30 日涨停会采用腾讯不复权日线按板块涨停幅度识别。
+`TUSHARE_TOKEN` 只允许配置在 `.env.local` 或 Vercel 环境变量中，不能使用 `NEXT_PUBLIC_` 前缀。兼容服务可以通过服务端变量 `TUSHARE_API_URL` 指定；留空时使用官方 `https://api.tushare.pro`。未配置 Token 时，实时扫描仍然可以运行，但近 30 日涨停会采用腾讯不复权日线按板块涨停幅度识别。
 
 ## 真实数据接口
 

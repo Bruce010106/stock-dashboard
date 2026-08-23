@@ -19,6 +19,12 @@ export type LiveScreenMatch = {
   checks: RuleCheck[];
 };
 
+export type LiveScreenNearMiss = LiveScreenMatch & {
+  failedRuleKey: 'tail_pattern';
+  failedRuleLabel: string;
+  reason: string;
+};
+
 export type LiveScreenResponse = {
   strategy: 'yang-yongxing-tail-1430';
   tradeDate: string;
@@ -34,6 +40,7 @@ export type LiveScreenResponse = {
     intradayConfirmed: number;
   };
   results: LiveScreenMatch[];
+  nearMisses: LiveScreenNearMiss[];
   warnings: string[];
 };
 
@@ -123,6 +130,7 @@ async function executeScan(requestedCodes?: string[]): Promise<LiveScreenRespons
       quoted: snapshots.length,
       funnel: { realtimeRules: 0, recentLimitUp: 0, intradayConfirmed: 0 },
       results: [],
+      nearMisses: [],
       warnings,
     };
   }
@@ -152,6 +160,7 @@ async function executeScan(requestedCodes?: string[]): Promise<LiveScreenRespons
   }
 
   const results: LiveScreenMatch[] = [];
+  const nearMisses: LiveScreenNearMiss[] = [];
   for (const snapshot of withLimitUp) {
     const history = (dailyByCode.get(snapshot.code) ?? [])
       .filter((bar) => bar.date < tradeDate)
@@ -166,8 +175,7 @@ async function executeScan(requestedCodes?: string[]): Promise<LiveScreenRespons
       recentDailyBars: history,
       minuteBars: minutesByCode.get(snapshot.code) ?? [],
     });
-    if (!evaluation.passed) continue;
-    results.push({
+    const row: LiveScreenMatch = {
       code: snapshot.code,
       name: evaluation.name,
       changePct: changePct(snapshot),
@@ -178,10 +186,21 @@ async function executeScan(requestedCodes?: string[]): Promise<LiveScreenRespons
       breakoutLevel: evaluation.intraday.breakoutLevel,
       score: evaluation.score,
       checks: evaluation.checks,
-    });
+    };
+    if (evaluation.passed) {
+      results.push(row);
+    } else {
+      nearMisses.push({
+        ...row,
+        failedRuleKey: 'tail_pattern',
+        failedRuleLabel: '14:30 后分时走势',
+        reason: evaluation.intraday.reason,
+      });
+    }
   }
 
   results.sort((a, b) => b.score - a.score || b.changePct - a.changePct);
+  nearMisses.sort((a, b) => b.score - a.score || b.changePct - a.changePct);
   if (marketDataProvider.historyMode !== 'tushare') {
     warnings.push('未配置 Tushare，近30日涨停使用腾讯不复权日线按板块涨停幅度识别');
   }
@@ -201,6 +220,7 @@ async function executeScan(requestedCodes?: string[]): Promise<LiveScreenRespons
       intradayConfirmed: results.length,
     },
     results,
+    nearMisses,
     warnings,
   };
 }

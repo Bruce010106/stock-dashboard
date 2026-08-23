@@ -23,6 +23,11 @@ type ScreenResult = {
   score: number;
 };
 
+type ScreenNearMiss = ScreenResult & {
+  failedRuleLabel: string;
+  reason: string;
+};
+
 type ScreenResponse = {
   tradeDate: string;
   generatedAt: string;
@@ -31,6 +36,7 @@ type ScreenResponse = {
   quoted: number;
   funnel: { realtimeRules: number; recentLimitUp: number; intradayConfirmed: number };
   results: ScreenResult[];
+  nearMisses: ScreenNearMiss[];
   warnings: string[];
   error?: string;
 };
@@ -40,6 +46,9 @@ export default function Home() {
   const [lastRun, setLastRun] = useState('尚未运行');
   const [scan, setScan] = useState<ScreenResponse | null>(null);
   const [error, setError] = useState('');
+  const strictResults = scan?.results ?? [];
+  const nearMisses = scan?.nearMisses ?? [];
+  const hasCandidates = strictResults.length + nearMisses.length > 0;
 
   async function runScreen() {
     setIsRunning(true);
@@ -58,10 +67,14 @@ export default function Home() {
   }
 
   function exportResults() {
-    if (!scan?.results.length) return;
+    if (!scan || !hasCandidates) return;
+    const exportRows = [
+      ...strictResults.map((stock) => ({ ...stock, conclusion: '严格命中', reason: '' })),
+      ...nearMisses.map((stock) => ({ ...stock, conclusion: '近似候选', reason: stock.reason })),
+    ];
     const rows = [
-      ['代码', '名称', '涨幅%', '总市值(亿)', '量比', '换手率%', '突破时刻', '评分'],
-      ...scan.results.map((stock) => [
+      ['代码', '名称', '涨幅%', '总市值(亿)', '量比', '换手率%', '突破时刻', '评分', '结论', '未通过原因'],
+      ...exportRows.map((stock) => [
         stock.code,
         stock.name,
         stock.changePct.toFixed(2),
@@ -70,6 +83,8 @@ export default function Home() {
         stock.turnoverRatePct.toFixed(2),
         stock.breakoutTime ?? '',
         String(stock.score),
+        stock.conclusion,
+        stock.reason,
       ]),
     ];
     const csv = `\uFEFF${rows.map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(',')).join('\n')}`;
@@ -151,7 +166,15 @@ export default function Home() {
               </button>
             </div>
             {error ? <p className="inline-error" role="alert">{error}</p> : null}
-            {scan?.warnings.length ? <p className="inline-warning">{scan.warnings.join('；')}</p> : null}
+            {scan ? (
+              <div className="scan-complete" role="status">
+                <span className="scan-complete-icon">✓</span>
+                <div>
+                  <strong>扫描完成：严格命中 {strictResults.length} 只</strong>
+                  <p>{nearMisses.length > 0 ? `另有 ${nearMisses.length} 只通过前五项条件，具体淘汰原因见下方。` : '本次没有接近全部条件的候选股票。'}</p>
+                </div>
+              </div>
+            ) : null}
           </section>
 
           <aside className="summary-card">
@@ -170,22 +193,31 @@ export default function Home() {
 
         <section className="results-card">
           <div className="results-head">
-            <div><p className="eyebrow">筛选结果</p><h2>最新候选 · {scan?.results.length ?? 0}</h2></div>
-            <button className="ghost-button" type="button" onClick={exportResults} disabled={!scan?.results.length}>导出清单</button>
+            <div><p className="eyebrow">筛选结果</p><h2>严格命中 {strictResults.length} · 近似候选 {nearMisses.length}</h2></div>
+            <button className="ghost-button" type="button" onClick={exportResults} disabled={!hasCandidates}>导出清单</button>
           </div>
+          {scan?.warnings.length ? <div className="source-note"><strong>数据源说明</strong><span>{scan.warnings.join('；')}</span></div> : null}
           <div className="table-wrap">
             <table>
-              <thead><tr><th>股票</th><th>当日涨幅</th><th>总市值</th><th>量比</th><th>换手率</th><th>突破时刻</th><th>策略评分</th></tr></thead>
+              <thead><tr><th>股票</th><th>当日涨幅</th><th>总市值</th><th>量比</th><th>换手率</th><th>突破时刻</th><th>筛选结论</th></tr></thead>
               <tbody>
-                {(scan?.results ?? []).map((stock) => (
+                {strictResults.map((stock) => (
                   <tr key={stock.code}>
                     <td><strong>{stock.name}</strong><small>{stock.code}</small></td>
                     <td className="positive">+{stock.changePct.toFixed(2)}%</td>
                     <td>{(stock.totalMarketCapYuan / 100_000_000).toFixed(1)} 亿</td><td>{stock.volumeRatio.toFixed(2)}</td><td>{stock.turnoverRatePct.toFixed(2)}%</td><td>{stock.breakoutTime ?? '—'}</td>
-                    <td><span className="score">{stock.score}</span></td>
+                    <td className="result-reason"><span className="result-badge matched">严格命中</span><small>六项条件全部通过</small></td>
                   </tr>
                 ))}
-                {scan && scan.results.length === 0 ? <tr><td colSpan={7} className="empty-state">该交易日没有股票同时满足六项条件</td></tr> : null}
+                {nearMisses.map((stock) => (
+                  <tr className="near-miss-row" key={stock.code}>
+                    <td><strong>{stock.name}</strong><small>{stock.code}</small></td>
+                    <td className="positive">+{stock.changePct.toFixed(2)}%</td>
+                    <td>{(stock.totalMarketCapYuan / 100_000_000).toFixed(1)} 亿</td><td>{stock.volumeRatio.toFixed(2)}</td><td>{stock.turnoverRatePct.toFixed(2)}%</td><td>{stock.breakoutTime ?? '未突破'}</td>
+                    <td className="result-reason"><span className="result-badge near">近似候选</span><small>{stock.reason}</small></td>
+                  </tr>
+                ))}
+                {scan && !hasCandidates ? <tr><td colSpan={7} className="empty-state">扫描完成，该交易日没有严格命中或近似候选</td></tr> : null}
                 {!scan ? <tr><td colSpan={7} className="empty-state">点击“运行今日选股”读取真实市场行情</td></tr> : null}
               </tbody>
             </table>

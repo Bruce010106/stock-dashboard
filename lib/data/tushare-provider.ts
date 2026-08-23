@@ -16,7 +16,7 @@ import {
   tushareTicker,
 } from './provider-utils.ts';
 
-const TUSHARE_URL = 'https://api.tushare.pro';
+const DEFAULT_TUSHARE_URL = 'https://api.tushare.pro';
 
 type TushareResponse = {
   code: number;
@@ -32,12 +32,21 @@ function getToken(): string {
   return token;
 }
 
+function getApiUrl(): string {
+  const configured = process.env.TUSHARE_API_URL?.trim() || DEFAULT_TUSHARE_URL;
+  const url = new URL(configured);
+  if (url.protocol !== 'https:') {
+    throw new Error('TUSHARE_API_URL 必须使用 HTTPS');
+  }
+  return url.toString();
+}
+
 async function query(
   apiName: string,
   params: Record<string, string>,
   fields: string[],
 ): Promise<TushareRow[]> {
-  const response = await fetch(TUSHARE_URL, {
+  const response = await fetch(getApiUrl(), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -62,6 +71,15 @@ async function query(
 
 export function isTushareConfigured(): boolean {
   return Boolean(process.env.TUSHARE_TOKEN?.trim());
+}
+
+export async function probeTushareConnection(): Promise<boolean> {
+  if (!isTushareConfigured()) return false;
+  const rows = await query('stock_basic', {
+    ts_code: '000001.SZ',
+    list_status: 'L',
+  }, ['ts_code', 'symbol', 'name']);
+  return rows.some((row) => String(row.symbol) === '000001');
 }
 
 export class TushareMarketDataProvider implements MarketDataProvider {
