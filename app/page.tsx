@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 
 const rules = [
   { label: '当日涨幅', value: '3.00% — 5.00%', status: '严格区间' },
@@ -11,22 +12,72 @@ const rules = [
   { label: '14:30 后走势', value: '新高后回踩不破', status: '分时确认' },
 ];
 
-const candidates = [
-  { code: '002892', name: '科力尔', change: '+4.38%', marketCap: '86.4 亿', volumeRatio: '1.76', turnover: '7.21%', time: '14:41', score: 92 },
-  { code: '603211', name: '晋拓股份', change: '+3.91%', marketCap: '54.8 亿', volumeRatio: '1.42', turnover: '6.63%', time: '14:36', score: 88 },
-  { code: '001269', name: '欧晶科技', change: '+4.72%', marketCap: '98.2 亿', volumeRatio: '2.08', turnover: '8.94%', time: '14:47', score: 86 },
-];
+type ScreenResult = {
+  code: string;
+  name: string;
+  changePct: number;
+  totalMarketCapYuan: number;
+  volumeRatio: number;
+  turnoverRatePct: number;
+  breakoutTime?: string;
+  score: number;
+};
+
+type ScreenResponse = {
+  tradeDate: string;
+  generatedAt: string;
+  historyMode: 'tushare' | 'tencent-fallback';
+  scanned: number;
+  quoted: number;
+  funnel: { realtimeRules: number; recentLimitUp: number; intradayConfirmed: number };
+  results: ScreenResult[];
+  warnings: string[];
+  error?: string;
+};
 
 export default function Home() {
   const [isRunning, setIsRunning] = useState(false);
-  const [lastRun, setLastRun] = useState('15:02:18');
+  const [lastRun, setLastRun] = useState('尚未运行');
+  const [scan, setScan] = useState<ScreenResponse | null>(null);
+  const [error, setError] = useState('');
 
-  function runScreen() {
+  async function runScreen() {
     setIsRunning(true);
-    window.setTimeout(() => {
+    setError('');
+    try {
+      const response = await fetch('/api/screen/yang-yongxing');
+      const payload = await response.json() as ScreenResponse;
+      if (!response.ok) throw new Error(payload.error ?? '真实行情扫描失败');
+      setScan(payload);
+      setLastRun(new Date(payload.generatedAt).toLocaleTimeString('zh-CN', { hour12: false }));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : '真实行情扫描失败');
+    } finally {
       setIsRunning(false);
-      setLastRun(new Date().toLocaleTimeString('zh-CN', { hour12: false }));
-    }, 650);
+    }
+  }
+
+  function exportResults() {
+    if (!scan?.results.length) return;
+    const rows = [
+      ['代码', '名称', '涨幅%', '总市值(亿)', '量比', '换手率%', '突破时刻', '评分'],
+      ...scan.results.map((stock) => [
+        stock.code,
+        stock.name,
+        stock.changePct.toFixed(2),
+        (stock.totalMarketCapYuan / 100_000_000).toFixed(2),
+        stock.volumeRatio.toFixed(2),
+        stock.turnoverRatePct.toFixed(2),
+        stock.breakoutTime ?? '',
+        String(stock.score),
+      ]),
+    ];
+    const csv = `\uFEFF${rows.map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(',')).join('\n')}`;
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    link.download = `杨永兴尾盘战法-${scan.tradeDate}.csv`;
+    link.click();
+    URL.revokeObjectURL(link.href);
   }
 
   return (
@@ -38,12 +89,12 @@ export default function Home() {
         </div>
         <nav aria-label="主导航">
           <a className="nav-item active" href="#strategy"><span>◈</span>策略选股</a>
-          <a className="nav-item" href="/backtest"><span>↗</span>策略回测</a>
-          <a className="nav-item" href="/data"><span>⌘</span>数据中心</a>
+          <Link className="nav-item" href="/backtest"><span>↗</span>策略回测</Link>
+          <Link className="nav-item" href="/data"><span>⌘</span>数据中心</Link>
         </nav>
         <div className="sidebar-foot">
-          <div className="data-status"><span className="status-dot amber" />a-stock-data · 开发</div>
-          <p>当前页面使用演示数据</p>
+          <div className="data-status"><span className="status-dot" />a-stock-data · 已接通</div>
+          <p>{scan?.historyMode === 'tushare' ? '腾讯 + Tushare 严谨口径' : '腾讯实时 · 免费历史降级'}</p>
           <p>最近运行 {lastRun}</p>
         </div>
       </aside>
@@ -54,7 +105,7 @@ export default function Home() {
             <p className="eyebrow">策略工作台 / 尾盘信号</p>
             <h1>杨永兴尾盘战法</h1>
           </div>
-          <div className="trade-state"><span className="status-dot" />沪深市场已收盘</div>
+          <div className="trade-state"><span className="status-dot" />{scan ? `最新交易日 ${scan.tradeDate}` : '真实行情按需读取'}</div>
         </header>
 
         <div className="content-grid">
@@ -96,46 +147,50 @@ export default function Home() {
                 </select>
               </div>
               <button type="button" onClick={runScreen} disabled={isRunning}>
-                {isRunning ? '正在扫描全市场…' : '运行今日选股'} <span>→</span>
+                {isRunning ? '正在读取真实行情…' : '运行今日选股'} <span>→</span>
               </button>
             </div>
+            {error ? <p className="inline-error" role="alert">{error}</p> : null}
+            {scan?.warnings.length ? <p className="inline-warning">{scan.warnings.join('；')}</p> : null}
           </section>
 
           <aside className="summary-card">
-            <div className="summary-title"><span>今日扫描</span><span>2026.08.21</span></div>
-            <div className="scan-number">5,412<small>只股票</small></div>
+            <div className="summary-title"><span>真实行情扫描</span><span>{scan?.tradeDate ?? '等待运行'}</span></div>
+            <div className="scan-number">{(scan?.scanned ?? 0).toLocaleString('zh-CN')}<small>只股票</small></div>
             <div className="funnel">
-              <div><span>涨幅 3%—5%</span><strong>186</strong></div>
-              <div><span>近 30 日有涨停</span><strong>47</strong></div>
-              <div><span>市值 / 量比 / 换手</span><strong>12</strong></div>
-              <div className="funnel-final"><span>分时形态确认</span><strong>3</strong></div>
+              <div><span>有效实时报价</span><strong>{scan?.quoted ?? 0}</strong></div>
+              <div><span>涨幅 / 市值 / 量能 / 换手</span><strong>{scan?.funnel.realtimeRules ?? 0}</strong></div>
+              <div><span>近 30 日有涨停</span><strong>{scan?.funnel.recentLimitUp ?? 0}</strong></div>
+              <div className="funnel-final"><span>分时形态确认</span><strong>{scan?.funnel.intradayConfirmed ?? 0}</strong></div>
             </div>
-            <div className="quality"><span>数据完整度</span><strong>99.7%</strong></div>
-            <div className="quality-bar"><i /></div>
+            <div className="quality"><span>报价覆盖率</span><strong>{scan?.scanned ? `${(scan.quoted / scan.scanned * 100).toFixed(1)}%` : '—'}</strong></div>
+            <div className="quality-bar"><i style={{ width: scan?.scanned ? `${Math.min(100, scan.quoted / scan.scanned * 100)}%` : '0%' }} /></div>
           </aside>
         </div>
 
         <section className="results-card">
           <div className="results-head">
-            <div><p className="eyebrow">筛选结果</p><h2>今日候选 · 3</h2></div>
-            <button className="ghost-button" type="button">导出清单</button>
+            <div><p className="eyebrow">筛选结果</p><h2>最新候选 · {scan?.results.length ?? 0}</h2></div>
+            <button className="ghost-button" type="button" onClick={exportResults} disabled={!scan?.results.length}>导出清单</button>
           </div>
           <div className="table-wrap">
             <table>
               <thead><tr><th>股票</th><th>当日涨幅</th><th>总市值</th><th>量比</th><th>换手率</th><th>突破时刻</th><th>策略评分</th></tr></thead>
               <tbody>
-                {candidates.map((stock) => (
+                {(scan?.results ?? []).map((stock) => (
                   <tr key={stock.code}>
                     <td><strong>{stock.name}</strong><small>{stock.code}</small></td>
-                    <td className="positive">{stock.change}</td>
-                    <td>{stock.marketCap}</td><td>{stock.volumeRatio}</td><td>{stock.turnover}</td><td>{stock.time}</td>
+                    <td className="positive">+{stock.changePct.toFixed(2)}%</td>
+                    <td>{(stock.totalMarketCapYuan / 100_000_000).toFixed(1)} 亿</td><td>{stock.volumeRatio.toFixed(2)}</td><td>{stock.turnoverRatePct.toFixed(2)}%</td><td>{stock.breakoutTime ?? '—'}</td>
                     <td><span className="score">{stock.score}</span></td>
                   </tr>
                 ))}
+                {scan && scan.results.length === 0 ? <tr><td colSpan={7} className="empty-state">该交易日没有股票同时满足六项条件</td></tr> : null}
+                {!scan ? <tr><td colSpan={7} className="empty-state">点击“运行今日选股”读取真实市场行情</td></tr> : null}
               </tbody>
             </table>
           </div>
-          <p className="disclaimer">示例结果用于界面与规则验证，不构成投资建议；正式结果将由 a-stock-data 实时数据计算。</p>
+          <p className="disclaimer">结果由腾讯实时行情、腾讯分钟线及 Tushare/腾讯历史日线计算，不构成投资建议。</p>
         </section>
       </section>
     </main>

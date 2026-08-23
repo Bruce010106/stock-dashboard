@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import Link from 'next/link';
 
 const rows = [
   { date: '2026-08-04', stock: '科力尔', code: '002892', entry: 14.86, returns: { 1: 1.62, 3: 4.31, 5: 6.08, 10: 3.74 } },
@@ -22,16 +23,16 @@ export default function BacktestPage() {
       <aside className="sidebar">
         <div className="brand"><span className="brand-mark">量</span><span>知衡 Quant</span></div>
         <nav aria-label="主导航">
-          <a className="nav-item" href="/"><span>◈</span>策略选股</a>
-          <a className="nav-item active" href="/backtest"><span>↗</span>策略回测</a>
-          <a className="nav-item" href="/data"><span>⌘</span>数据中心</a>
+          <Link className="nav-item" href="/"><span>◈</span>策略选股</Link>
+          <Link className="nav-item active" href="/backtest"><span>↗</span>策略回测</Link>
+          <Link className="nav-item" href="/data"><span>⌘</span>数据中心</Link>
         </nav>
         <div className="sidebar-foot"><div className="data-status"><span className="status-dot" />信号表现模式</div><p>独立信号 · 不叠加仓位</p></div>
       </aside>
       <section className="workspace">
         <header className="topbar">
           <div><p className="eyebrow">策略回测 / 信号表现</p><h1>杨永兴尾盘战法</h1></div>
-          <a className="back-link" href="/">返回选股 →</a>
+          <Link className="back-link" href="/">返回选股 →</Link>
         </header>
 
         <div className="backtest-grid">
