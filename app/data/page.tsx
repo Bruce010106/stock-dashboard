@@ -9,6 +9,7 @@ type ProviderStatus = {
   configured: boolean;
   healthy: boolean;
   role: string;
+  error?: string;
 };
 
 type DataStatus = {
@@ -17,6 +18,7 @@ type DataStatus = {
   latestQuoteAt?: string;
   historyMode: 'tushare' | 'tencent-fallback';
   providers: ProviderStatus[];
+  warnings?: string[];
 };
 
 export default function DataPage() {
@@ -36,7 +38,7 @@ export default function DataPage() {
   const datasets = status?.providers ?? [
     { id: 'tencent', name: '腾讯实时行情', configured: true, healthy: false, role: '正在检查连接' },
     { id: 'eastmoney', name: '全市场股票池', configured: true, healthy: false, role: '正在检查连接' },
-    { id: 'tushare', name: 'Tushare Pro', configured: false, healthy: false, role: '正在检查配置' },
+        { id: 'tushare', name: 'Tushare Pro', configured: false, healthy: false, role: '历史日线 / 点时指标 / 历史分钟回测' },
   ];
 
   return (
@@ -48,7 +50,7 @@ export default function DataPage() {
           <Link className="nav-item" href="/backtest"><span>↗</span>策略回测</Link>
           <Link className="nav-item active" href="/data"><span>⌘</span>数据中心</Link>
         </nav>
-        <div className="sidebar-foot"><div className="data-status"><span className={`status-dot ${status?.healthy ? '' : 'amber'}`} />{status?.healthy ? '真实行情在线' : '连接检查中'}</div><p>a-stock-data Provider</p></div>
+        <div className="sidebar-foot"><div className="data-status"><span className={`status-dot ${status?.healthy ? '' : 'amber'}`} />{status === null ? '连接检查中' : status.healthy ? '核心数据在线' : '核心数据异常'}</div><p>a-stock-data Provider</p></div>
       </aside>
       <section className="workspace">
         <header className="topbar"><div><p className="eyebrow">数据中心 / Provider</p><h1>a-stock-data</h1></div><Link className="back-link" href="/">返回选股 →</Link></header>
@@ -58,8 +60,9 @@ export default function DataPage() {
         </div>
         <section className="results-card data-table-card">
           <div className="results-head"><div><p className="eyebrow">接入矩阵</p><h2>生产数据源</h2></div><span className="sample-badge">{status?.historyMode === 'tushare' ? '严谨历史口径' : '免费降级口径'}</span></div>
+          {status?.warnings?.length ? <div className="source-note"><strong>连接说明</strong><span>{status.warnings.join('；')}</span></div> : null}
           <div className="table-wrap"><table><thead><tr><th>数据源</th><th>用途</th><th>配置</th><th>当前状态</th></tr></thead><tbody>
-            {datasets.map((dataset) => <tr key={dataset.id}><td><strong>{dataset.name}</strong></td><td>{dataset.role}</td><td>{dataset.configured ? '已配置' : '缺少密钥'}</td><td><span className={`contract-badge ${dataset.healthy ? '' : 'contract-badge-warn'}`}>{dataset.healthy ? '已接通' : dataset.configured ? '检查中' : '使用降级源'}</span></td></tr>)}
+            {datasets.map((dataset) => <tr key={dataset.id}><td><strong>{dataset.name}</strong>{dataset.error ? <small>{dataset.error}</small> : null}</td><td>{dataset.role}</td><td>{dataset.configured ? '已配置' : '缺少密钥'}</td><td><span className={`contract-badge ${dataset.healthy ? '' : 'contract-badge-warn'}`}>{dataset.healthy ? '已接通' : status === null ? '检查中' : dataset.configured ? '连接异常' : '使用降级源'}</span></td></tr>)}
           </tbody></table></div>
         </section>
         <div className="data-cautions">

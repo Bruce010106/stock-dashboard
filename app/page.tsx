@@ -155,11 +155,10 @@ export default function Home() {
             <div className="action-row">
               <div className="universe">
                 <label htmlFor="universe">股票池</label>
-                <select id="universe" defaultValue="all">
+                <select id="universe" value="all" disabled aria-describedby="universe-note">
                   <option value="all">沪深京 A 股 · 排除 ST / 退市</option>
-                  <option value="hs300">沪深 300</option>
-                  <option value="zz500">中证 500</option>
                 </select>
+                <small id="universe-note">当前接口仅支持全市场扫描，指数成分股筛选尚未接入。</small>
               </div>
               <button type="button" onClick={runScreen} disabled={isRunning}>
                 {isRunning ? '正在读取真实行情…' : '运行今日选股'} <span>→</span>

@@ -2,8 +2,8 @@ import {
   evaluateYangYongxing,
   screenYangYongxing,
   YANG_YONGXING_RULES,
-  type YangYongxingCandidate,
 } from '../../../../lib/strategies/yang-yongxing';
+import { validateYangYongxingStrategyPayload } from '../../../../lib/api-validation';
 
 export async function GET() {
   return Response.json({
@@ -17,28 +17,27 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  let payload: { candidates?: YangYongxingCandidate[]; explain?: boolean };
+  let rawPayload: unknown;
 
   try {
-    payload = await request.json();
+    rawPayload = await request.json();
   } catch {
     return Response.json({ error: '请求体必须是合法 JSON' }, { status: 400 });
   }
 
-  if (!Array.isArray(payload.candidates)) {
-    return Response.json(
-      { error: 'candidates 必须是候选股票数组' },
-      { status: 400 },
-    );
+  const validated = validateYangYongxingStrategyPayload(rawPayload);
+  if (!validated.ok) {
+    return Response.json({ error: validated.error }, { status: 400 });
   }
+  const { candidates, explain } = validated.value;
 
-  const results = payload.explain
-    ? payload.candidates.map(evaluateYangYongxing)
-    : screenYangYongxing(payload.candidates);
+  const results = explain
+    ? candidates.map(evaluateYangYongxing)
+    : screenYangYongxing(candidates);
 
   return Response.json({
     strategy: 'yang-yongxing-tail-1430',
-    scanned: payload.candidates.length,
+    scanned: candidates.length,
     matched: results.filter((result) => result.passed).length,
     results,
   });

@@ -114,6 +114,9 @@ td:first-child small { margin-top: 3px; color: #89928b; font-family: monospace; 
 .field-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 16px; margin-top: 24px; }
 .field-grid label { display: grid; gap: 7px; color: var(--muted); font-size: 11px; font-weight: 700; }
 .field-grid input, .field-grid select { width: 100%; max-width: none; padding: 11px 12px; border: 1px solid var(--line); border-radius: 8px; background: #fbfcf9; color: var(--ink); font-size: 12px; }
+.backtest-actions { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 18px; }
+.backtest-actions small { max-width: 460px; color: var(--muted); font-size: 10px; line-height: 1.5; }
+.backtest-actions button { flex: 0 0 auto; }
 .backtest-note { margin-top: 22px; padding: 15px 17px; border: 1px solid #e6dfcb; border-radius: 9px; background: #fbf8ef; }
 .backtest-note strong { color: #765c2c; font-size: 11px; }
 .backtest-note p { margin: 6px 0 0; color: #69665d; font-size: 11px; line-height: 1.6; }
@@ -175,6 +178,8 @@ td:first-child small { margin-top: 3px; color: #89928b; font-family: monospace; 
   .action-row button, select { width: 100%; max-width: none; }
   .source-note { align-items: flex-start; padding-inline: 18px; }
   .field-grid { grid-template-columns: 1fr; }
+  .backtest-actions { align-items: stretch; flex-direction: column; }
+  .backtest-actions button { width: 100%; }
   .metric-stack { grid-template-columns: 1fr; }
   .data-hero { align-items: stretch; flex-direction: column; }
 }

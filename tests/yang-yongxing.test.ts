@@ -69,3 +69,30 @@ test('创新高后跌破突破位时分时形态不通过', () => {
   assert.equal(result.passed, false);
   assert.match(result.reason, /跌破突破位/);
 });
+
+test('单调上涨但没有从局部高点回落时不通过', () => {
+  const result = evaluateTailPattern([
+    { time: '14:29', high: 10.5, low: 10.4, close: 10.45 },
+    { time: '14:35', high: 10.6, low: 10.51, close: 10.58 },
+    { time: '14:45', high: 10.7, low: 10.61, close: 10.68 },
+    { time: '15:00', high: 10.8, low: 10.71, close: 10.78 },
+  ]);
+
+  assert.equal(result.passed, false);
+  assert.match(result.reason, /尚未形成可验证的回踩/);
+});
+
+test('形成真实回踩且没有跌破突破位时通过', () => {
+  const result = evaluateTailPattern([
+    { time: '14:29', high: 10.5, low: 10.4, close: 10.45 },
+    { time: '14:35', high: 10.62, low: 10.51, close: 10.6 },
+    { time: '14:40', high: 10.68, low: 10.56, close: 10.64 },
+    { time: '14:48', high: 10.64, low: 10.52, close: 10.58 },
+    { time: '15:00', high: 10.66, low: 10.55, close: 10.63 },
+  ]);
+
+  assert.equal(result.passed, true);
+  assert.equal(result.breakoutTime, '14:35');
+  assert.equal(result.breakoutLevel, 10.5);
+  assert.equal(result.pullbackLow, 10.52);
+});

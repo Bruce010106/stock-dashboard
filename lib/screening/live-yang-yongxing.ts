@@ -113,6 +113,15 @@ async function executeScan(requestedCodes?: string[]): Promise<LiveScreenRespons
   const nameByCode = new Map(targetUniverse.map((stock) => [stock.code, stock.name]));
   const realtimeCandidates = snapshots.filter(passesRealtimeRules);
   const warnings: string[] = [];
+  let historyMode = marketDataProvider.historyMode;
+  let isFallback = historyMode === 'tencent-fallback';
+
+  // This is the configured default. If history is actually requested below,
+  // getDailyBarsWithSource() replaces it with the result of that request,
+  // including a runtime Tushare -> Tencent fallback.
+  if (isFallback) {
+    warnings.push('未配置 Tushare，近30日涨停使用腾讯不复权日线按板块涨停幅度识别');
+  }
 
   if (snapshots.length < targetUniverse.length * 0.9) {
     warnings.push(`有效报价 ${snapshots.length}/${targetUniverse.length}，停牌或上游空数据股票已跳过`);
@@ -124,8 +133,8 @@ async function executeScan(requestedCodes?: string[]): Promise<LiveScreenRespons
       tradeDate,
       generatedAt: new Date().toISOString(),
       source: marketDataProvider.name,
-      historyMode: marketDataProvider.historyMode,
-      isFallback: marketDataProvider.historyMode !== 'tushare',
+      historyMode,
+      isFallback,
       scanned: targetUniverse.length,
       quoted: snapshots.length,
       funnel: { realtimeRules: 0, recentLimitUp: 0, intradayConfirmed: 0 },
@@ -135,11 +144,17 @@ async function executeScan(requestedCodes?: string[]): Promise<LiveScreenRespons
     };
   }
 
-  const dailyBars = await marketDataProvider.getDailyBars(
+  const dailyResult = await marketDataProvider.getDailyBarsWithSource(
     realtimeCandidates.map((snapshot) => snapshot.code),
     calendarDaysBefore(tradeDate, 70),
     tradeDate,
   );
+  const dailyBars = dailyResult.bars;
+  historyMode = dailyResult.historyMode;
+  isFallback = dailyResult.isFallback;
+  if (dailyResult.warning && !warnings.includes(dailyResult.warning)) {
+    warnings.push(dailyResult.warning);
+  }
   const dailyByCode = groupDailyBars(dailyBars);
   const withLimitUp = realtimeCandidates.filter((snapshot) => {
     const history = (dailyByCode.get(snapshot.code) ?? [])
@@ -201,17 +216,13 @@ async function executeScan(requestedCodes?: string[]): Promise<LiveScreenRespons
 
   results.sort((a, b) => b.score - a.score || b.changePct - a.changePct);
   nearMisses.sort((a, b) => b.score - a.score || b.changePct - a.changePct);
-  if (marketDataProvider.historyMode !== 'tushare') {
-    warnings.push('未配置 Tushare，近30日涨停使用腾讯不复权日线按板块涨停幅度识别');
-  }
-
   return {
     strategy: 'yang-yongxing-tail-1430',
     tradeDate,
     generatedAt: new Date().toISOString(),
     source: marketDataProvider.name,
-    historyMode: marketDataProvider.historyMode,
-    isFallback: marketDataProvider.historyMode !== 'tushare',
+    historyMode,
+    isFallback,
     scanned: targetUniverse.length,
     quoted: snapshots.length,
     funnel: {

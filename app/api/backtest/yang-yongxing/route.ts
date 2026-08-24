@@ -1,29 +1,64 @@
 import {
   runYangYongxingForwardBacktest,
-  type YangYongxingSignalEvent,
 } from '../../../../lib/backtest/yang-yongxing-forward';
+import {
+  LiveBacktestDataError,
+  runLiveYangYongxingBacktest,
+} from '../../../../lib/backtest/live-yang-yongxing';
+import {
+  validateLiveBacktestQuery,
+  validateYangYongxingBacktestPayload,
+} from '../../../../lib/api-validation';
 
-export async function POST(request: Request) {
-  let payload: {
-    events?: YangYongxingSignalEvent[];
-    holdingTradingDays?: number;
-  };
+export const runtime = 'nodejs';
+export const maxDuration = 60;
+
+export async function GET(request: Request) {
+  const validated = validateLiveBacktestQuery(new URL(request.url).searchParams);
+  if (!validated.ok) {
+    return Response.json({ error: validated.error }, { status: 400 });
+  }
 
   try {
-    payload = await request.json();
+    const result = await runLiveYangYongxingBacktest(validated.value);
+    return Response.json(result, {
+      headers: { 'Cache-Control': 'private, max-age=0, must-revalidate' },
+    });
+  } catch (error) {
+    if (error instanceof LiveBacktestDataError) {
+      return Response.json(
+        { error: error.message, code: error.code },
+        { status: error.status },
+      );
+    }
+    console.error('真实历史回测失败', error);
+    return Response.json(
+      { error: error instanceof Error ? error.message : '真实历史回测失败' },
+      { status: 502 },
+    );
+  }
+}
+
+export async function POST(request: Request) {
+  let rawPayload: unknown;
+
+  try {
+    rawPayload = await request.json();
   } catch {
     return Response.json({ error: '请求体必须是合法 JSON' }, { status: 400 });
   }
 
-  if (!Array.isArray(payload.events)) {
-    return Response.json({ error: 'events 必须是信号事件数组' }, { status: 400 });
+  const validated = validateYangYongxingBacktestPayload(rawPayload);
+  if (!validated.ok) {
+    return Response.json({ error: validated.error }, { status: 400 });
   }
+  const { events, holdingTradingDays } = validated.value;
 
   try {
     return Response.json(
       runYangYongxingForwardBacktest(
-        payload.events,
-        payload.holdingTradingDays ?? 5,
+        events,
+        holdingTradingDays,
       ),
     );
   } catch (error) {

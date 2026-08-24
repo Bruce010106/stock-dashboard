@@ -3,7 +3,6 @@ import { ImageResponse } from 'next/og';
 export const alt = 'Zhiheng Quant — A-share strategy screening and backtesting';
 export const size = { width: 1200, height: 630 };
 export const contentType = 'image/png';
-export const runtime = 'edge';
 
 const rules = ['3–5% CHANGE', '30D LIMIT-UP', '< 20B CAP', '> 1 VOL RATIO', '5–10% TURN', '14:30 HIGH'];
 

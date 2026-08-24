@@ -17,6 +17,7 @@ export type DailyMarketBar = {
   previousClose: number;
   volume: number;
   amountYuan: number;
+  volumeRatio?: number;
   turnoverRatePct?: number;
   totalMarketCapYuan?: number;
   limitUpPrice?: number;

@@ -120,7 +120,24 @@ export function evaluateTailPattern(minuteBars: MinuteBar[]): IntradayPattern {
     ...confirmationBars.map((bar) => bar.high),
   );
   const pullbackLow = Math.min(...confirmationBars.map((bar) => bar.low));
-  const hasPullback = confirmationBars.some((bar) => bar.low < sessionHigh);
+
+  // A pullback needs to follow a high that has actually been established.
+  // Comparing lows with the final session high is not sufficient: in a
+  // steadily rising sequence every earlier low is below that final high,
+  // even though price never retreated from a local high.
+  let peakHigh = breakoutBar.high;
+  let hasPullback = false;
+  for (const bar of confirmationBars) {
+    if (bar.high > peakHigh) {
+      peakHigh = bar.high;
+      continue;
+    }
+
+    if (bar.low < peakHigh) {
+      hasPullback = true;
+      break;
+    }
+  }
   const heldBreakout = confirmationBars.every((bar) => bar.low >= breakoutLevel);
   const lastClose = confirmationBars.at(-1)?.close ?? breakoutBar.close;
   const closedAboveBreakout = lastClose >= breakoutLevel;

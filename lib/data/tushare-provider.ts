@@ -143,6 +143,7 @@ export class TushareMarketDataProvider implements MarketDataProvider {
           previousClose,
           volume: parseNumber(row.vol),
           amountYuan: parseNumber(row.amount) * 1_000,
+          volumeRatio: parseNumber(metric?.volume_ratio),
           turnoverRatePct: parseNumber(metric?.turnover_rate),
           totalMarketCapYuan: parseNumber(metric?.total_mv) * 10_000,
           isLimitUp: limitStatus === 2 || limitStatus === 3 ||
@@ -157,6 +158,38 @@ export class TushareMarketDataProvider implements MarketDataProvider {
     void _codes;
     void _date;
     throw new Error('历史分钟线需开通 Tushare stk_mins 权限；当日分钟线由腾讯行情提供');
+  }
+
+  async getHistoricalMinuteBars(
+    rawCode: string,
+    date: string,
+  ): Promise<MinuteMarketBar[]> {
+    const code = normalizeTicker(rawCode);
+    const rows = await query('stk_mins', {
+      ts_code: tushareTicker(code),
+      freq: '1min',
+      start_date: `${date} 09:00:00`,
+      end_date: `${date} 15:10:00`,
+    }, [
+      'ts_code', 'trade_time', 'open', 'close', 'high', 'low', 'vol', 'amount',
+    ]);
+
+    return rows.flatMap((row) => {
+      const stamp = String(row.trade_time ?? '').replace('T', ' ');
+      const matched = /^(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})/.exec(stamp);
+      if (!matched || matched[1] !== date) return [];
+      return [{
+        code,
+        date,
+        time: matched[2],
+        open: parseNumber(row.open),
+        close: parseNumber(row.close),
+        high: parseNumber(row.high),
+        low: parseNumber(row.low),
+        volume: parseNumber(row.vol),
+        amountYuan: parseNumber(row.amount),
+      } satisfies MinuteMarketBar];
+    }).sort((a, b) => a.time.localeCompare(b.time));
   }
 
   async getSnapshots(_codes: string[]): Promise<MarketSnapshot[]> {

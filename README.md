@@ -9,7 +9,7 @@ A 股量化选股与策略回测平台。首个内置策略为“杨永兴尾盘
 ## 已实现
 
 - 指定策略的 A 股候选股筛选与逐项条件审计
-- 指定股票、策略及持有交易日的信号表现回测
+- 指定股票、日期区间及持有交易日的真实历史信号表现回测
 - “杨永兴尾盘战法”六项筛选条件
 - 选股及回测 API
 - `a-stock-data` 腾讯实时行情与分钟线适配器
@@ -18,7 +18,7 @@ A 股量化选股与策略回测平台。首个内置策略为“杨永兴尾盘
 - Tushare 不可用时自动降级到腾讯不复权日线
 - 全市场真实行情选股 API、连接状态 API 与 CSV 导出
 
-首页“运行今日选股”会读取真实市场行情。回测页面现有样本仍用于展示交互口径；真实历史回测还需要开通 Tushare 历史分钟数据权限。
+首页“运行今日选股”会读取真实市场行情。回测页面会使用 Tushare 日线、`daily_basic` 点时指标与 `stk_mins` 历史分钟线重放真实信号；需要配置 `TUSHARE_TOKEN` 并开通相应权限。
 
 ## 杨永兴尾盘战法
 
@@ -41,11 +41,14 @@ npm run dev
 
 `TUSHARE_TOKEN` 只允许配置在 `.env.local` 或 Vercel 环境变量中，不能使用 `NEXT_PUBLIC_` 前缀。兼容服务可以通过服务端变量 `TUSHARE_API_URL` 指定；留空时使用官方 `https://api.tushare.pro`。未配置 Token 时，实时扫描仍然可以运行，但近 30 日涨停会采用腾讯不复权日线按板块涨停幅度识别。
 
+真实回测单次支持最多 5 只股票、90 个自然日。系统先用日线和点时指标完成前五项粗筛，只为候选日期读取 1 分钟线；这适合交互式核验，不替代全市场多年离线回测任务。
+
 ## 真实数据接口
 
 - `GET /api/data-status`：检查腾讯行情与 Tushare 配置状态。
 - `GET /api/screen/yang-yongxing`：扫描沪深京全市场；结果缓存 5 分钟。
 - `GET /api/screen/yang-yongxing?codes=000001,600519`：只检查指定股票，适合调试。
+- `GET /api/backtest/yang-yongxing?codes=002892&startDate=2026-06-01&endDate=2026-08-24&holdingTradingDays=5`：使用真实历史数据执行受控区间回测。
 - `POST /api/strategies/yang-yongxing`：对调用方提交的标准化候选数据执行策略审计。
 
 ## 验证
