@@ -5,10 +5,10 @@ import { useActionState } from 'react';
 
 import {
   forgotPasswordAction,
-  initialAuthActionState,
   signInAction,
   signUpAction,
 } from '../../app/auth/actions';
+import type { AuthActionState } from '../../app/auth/actions';
 import { getSupabaseConfigIssue } from '../../lib/supabase/config';
 import { authNextQuery } from '../../lib/supabase/redirect';
 import AuthShell from './AuthShell';
@@ -47,6 +47,8 @@ const copy: Record<AuthFormMode, {
     submit: '发送重置邮件',
   },
 };
+
+const initialAuthActionState: AuthActionState = {};
 
 export default function AuthForm({ mode, nextPath = '/portfolio', initialError }: AuthFormProps) {
   const action = mode === 'sign-in'

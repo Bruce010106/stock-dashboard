@@ -15,8 +15,6 @@ export type AuthActionState = {
   message?: string;
 };
 
-export const initialAuthActionState: AuthActionState = {};
-
 function formValue(formData: FormData, key: string): string {
   const value = formData.get(key);
   return typeof value === 'string' ? value.trim() : '';
