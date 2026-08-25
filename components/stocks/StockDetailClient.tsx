@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import type { DailyMarketBar, MarketSnapshot } from '../../lib/data/market-data-provider.ts';
 import type { RuleCheck, YangYongxingResult } from '../../lib/strategies/yang-yongxing.ts';
 import { StockKlineChart } from './StockKlineChart.tsx';
+import AuthStatus from '../auth/AuthStatus.tsx';
 import styles from './stock-detail.module.css';
 
 type StockDetailResponse = {
@@ -63,7 +64,7 @@ export function StockDetailClient({ code }: { code: string }) {
       <div className={styles.content}>
         <header className={styles.header}>
           <div><p>股票详情 / DAILY MARKET</p><h1>{data ? `${data.name} ${data.code}` : code}</h1></div>
-          <Link href="/">返回选股 →</Link>
+          <div className={styles.headerActions}><AuthStatus nextPath={`/stocks/${code}`} /><Link href="/">返回选股 →</Link></div>
         </header>
 
         {error ? <section className={styles.state}><strong>暂时无法读取详情</strong><p>{error}</p></section> : null}

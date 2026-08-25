@@ -5,17 +5,30 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useSyncExternalStore,
   useState,
 } from 'react';
 import type { FormEvent } from 'react';
+import AuthStatus from '../auth/AuthStatus.tsx';
 import {
   calculateHoldingValuation,
   calculatePortfolioTotals,
 } from '../../lib/portfolio/calculations.ts';
 import {
+  createEmptyPortfolioState,
+  fetchPortfolioCloud,
+  getPortfolioMigrationStatus,
   getPortfolioSnapshot,
   getServerPortfolioSnapshot,
+  hasPortfolioData,
+  importPortfolioCloud,
+  loadPortfolioState,
+  markPortfolioMigrationStatus,
+  mergePortfolioStates,
+  PortfolioCloudError,
+  savePortfolioCloud,
+  setPortfolioStorageScope,
   setPortfolioSnapshot,
   subscribeToPortfolio,
 } from '../../lib/portfolio/storage.ts';
@@ -29,9 +42,11 @@ import {
 } from '../../lib/portfolio/types.ts';
 import type {
   PortfolioHolding,
+  PortfolioCloudResponse,
   PortfolioQuote,
   PortfolioQuotesResponse,
   PortfolioState,
+  PortfolioSyncStatus,
 } from '../../lib/portfolio/types.ts';
 import styles from './portfolio.module.css';
 
@@ -45,6 +60,18 @@ type HoldingDraft = {
   code: string;
   quantity: string;
   costPrice: string;
+};
+
+type PortfolioSyncState = {
+  status: PortfolioSyncStatus;
+  message?: string;
+  updatedAt?: string;
+};
+
+type MigrationPrompt = {
+  userId: string;
+  email: string | null;
+  localState: PortfolioState;
 };
 
 const EMPTY_DRAFT: HoldingDraft = { code: '', quantity: '', costPrice: '' };
@@ -104,13 +131,129 @@ export default function PortfolioDashboard() {
   const [quotes, setQuotes] = useState<Record<string, PortfolioQuote>>({});
   const [quoteState, setQuoteState] = useState<QuoteState>({ status: 'idle' });
   const [refreshToken, setRefreshToken] = useState(0);
+  const [syncState, setSyncState] = useState<PortfolioSyncState>({ status: 'checking' });
+  const [cloudAccount, setCloudAccount] = useState<Pick<PortfolioCloudResponse, 'userId' | 'email'> | null>(null);
+  const [migrationPrompt, setMigrationPrompt] = useState<MigrationPrompt | null>(null);
+  const [migrationBusy, setMigrationBusy] = useState(false);
+  const syncRequestRef = useRef(0);
 
   const updatePortfolio = useCallback(
     (updater: (current: PortfolioState) => PortfolioState) => {
-      setPortfolioSnapshot(updater(portfolio));
+      const current = getPortfolioSnapshot();
+      const next = updater(current);
+      setPortfolioSnapshot(next);
+      const account = cloudAccount;
+      if (!account?.userId) return;
+      const requestId = ++syncRequestRef.current;
+      setSyncState({ status: 'syncing' });
+      void savePortfolioCloud(next, {
+        userId: account.userId,
+        previousState: current,
+      }).then(() => {
+        if (requestId !== syncRequestRef.current) return;
+        setSyncState({ status: 'synced', updatedAt: new Date().toISOString() });
+      }).catch((error: unknown) => {
+        if (requestId !== syncRequestRef.current) return;
+        setSyncState({
+          status: 'error',
+          message: error instanceof Error ? error.message : '云端同步失败，请稍后重试',
+        });
+      });
     },
-    [portfolio],
+    [cloudAccount],
   );
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
+
+    async function initializeCloud() {
+      setSyncState({ status: 'checking' });
+      let cloud: PortfolioCloudResponse;
+      try {
+        cloud = await fetchPortfolioCloud({ signal: controller.signal });
+      } catch (error) {
+        if (!active || controller.signal.aborted) return;
+        setCloudAccount(null);
+        setPortfolioStorageScope(null);
+        const status = error instanceof PortfolioCloudError &&
+          error.status > 0 && error.status !== 404 && error.status !== 503
+          ? 'error'
+          : 'offline';
+        setSyncState({
+          status,
+          message: error instanceof Error ? error.message : '当前使用离线缓存，联网后可同步',
+        });
+        return;
+      }
+      if (!active || controller.signal.aborted) return;
+
+      if (!cloud.authenticated || !cloud.userId) {
+        setCloudAccount(null);
+        setPortfolioStorageScope(null);
+        setSyncState({ status: 'local' });
+        return;
+      }
+
+      let localState = createEmptyPortfolioState();
+      try {
+        if (typeof window !== 'undefined') localState = loadPortfolioState(window.localStorage);
+      } catch {
+        // The storage helper already handles unavailable/private localStorage.
+      }
+      setPortfolioStorageScope(cloud.userId);
+      setPortfolioSnapshot(cloud.portfolio);
+      setCloudAccount({ userId: cloud.userId, email: cloud.email });
+      setSyncState({ status: 'synced', updatedAt: new Date().toISOString() });
+
+      const migrationStatus = getPortfolioMigrationStatus(cloud.userId);
+      if (hasPortfolioData(localState) && !migrationStatus) {
+        setMigrationPrompt({
+          userId: cloud.userId,
+          email: cloud.email,
+          localState,
+        });
+      }
+    }
+
+    void initializeCloud();
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, []);
+
+  async function mergeAnonymousPortfolio() {
+    if (!migrationPrompt || migrationBusy) return;
+    setMigrationBusy(true);
+    syncRequestRef.current += 1;
+    setSyncState({ status: 'syncing' });
+    try {
+      const mergedPreview = mergePortfolioStates(
+        getPortfolioSnapshot(),
+        migrationPrompt.localState,
+      );
+      const response = await importPortfolioCloud(migrationPrompt.localState);
+      setPortfolioSnapshot(hasPortfolioData(response.portfolio) ? response.portfolio : mergedPreview);
+      markPortfolioMigrationStatus(migrationPrompt.userId, 'merged');
+      setMigrationPrompt(null);
+      setSyncState({ status: 'synced', updatedAt: new Date().toISOString() });
+    } catch (error) {
+      setSyncState({
+        status: 'error',
+        message: error instanceof Error ? error.message : '合并失败，请稍后重试',
+      });
+    } finally {
+      setMigrationBusy(false);
+    }
+  }
+
+  function deferAnonymousPortfolio() {
+    if (!migrationPrompt || migrationBusy) return;
+    markPortfolioMigrationStatus(migrationPrompt.userId, 'deferred');
+    setMigrationPrompt(null);
+    setSyncState({ status: 'synced', updatedAt: new Date().toISOString() });
+  }
 
   const quoteCodes = useMemo(() => {
     const codes = new Set(portfolio.watchlist);
@@ -262,30 +405,37 @@ export default function PortfolioDashboard() {
     if (editingHoldingId === id) cancelEdit();
   }
 
-  const statusLabel = quoteState.status === 'loading'
-    ? '正在读取真实行情…'
-    : quoteState.status === 'ready'
-      ? '实时行情已更新'
-      : quoteState.status === 'degraded'
-        ? '部分报价不可用'
-        : quoteState.status === 'error'
-          ? '行情暂不可用'
-          : '等待添加股票';
+  const syncStatusLabel = syncState.status === 'checking'
+    ? '正在检查云端…'
+    : syncState.status === 'syncing'
+      ? '正在同步…'
+      : syncState.status === 'synced'
+        ? cloudAccount?.email ? `已同步 · ${cloudAccount.email}` : '已同步'
+        : syncState.status === 'offline'
+          ? '离线缓存'
+          : syncState.status === 'error'
+            ? '同步失败'
+            : '未登录 · 本地保存';
 
   return (
     <main className={styles.page}>
       <header className={styles.header}>
         <div>
           <Link className={styles.backLink} href="/">← 返回策略选股</Link>
-          <p className={styles.eyebrow}>组合管理 / 本地保存</p>
+          <p className={styles.eyebrow}>组合管理 / {cloudAccount ? '云端保存' : '本地保存'}</p>
           <h1>自选股与持仓</h1>
           <p className={styles.subtitle}>
-            自选和持仓只保存在当前浏览器；价格来自实时行情接口，不使用模拟价格。
+            {cloudAccount
+              ? '已登录，记录会保存到云端并在当前设备保留缓存；价格来自实时行情接口。'
+              : '未登录时保存在当前浏览器；登录后可同步到云端。价格来自实时行情接口。'}
           </p>
         </div>
-        <div className={styles.statusPill} data-state={quoteState.status}>
-          <span className={styles.statusDot} />
-          <span>{statusLabel}</span>
+        <div className={styles.accountStack}>
+          <AuthStatus nextPath="/portfolio" />
+          <div className={styles.statusPill} data-state={syncState.status} title={syncState.message}>
+            <span className={styles.statusDot} />
+            <span>{syncStatusLabel}</span>
+          </div>
         </div>
       </header>
 
@@ -307,6 +457,11 @@ export default function PortfolioDashboard() {
           {quoteState.status === 'loading' ? '读取中…' : '刷新报价'}
         </button>
       </section>
+      {syncState.message ? (
+        <p className={syncState.status === 'error' ? styles.error : styles.warning} role="status">
+          {syncState.message}
+        </p>
+      ) : null}
       {quoteState.message ? (
         <p className={quoteState.status === 'error' ? styles.error : styles.warning} role="status">
           {quoteState.message}
@@ -330,9 +485,9 @@ export default function PortfolioDashboard() {
           <small>{totals.totalCount > 0 && totals.pnl === null ? '报价不完整，暂不汇总' : '已报价持仓的成本口径'}</small>
         </article>
         <article className={styles.metricCard}>
-          <span>本地记录</span>
+          <span>{cloudAccount ? '当前记录' : '本地记录'}</span>
           <strong>{portfolio.watchlist.length + portfolio.holdings.length}</strong>
-          <small>自选 {portfolio.watchlist.length} · 持仓 {portfolio.holdings.length}</small>
+          <small>{cloudAccount ? '云端主数据 · ' : ''}自选 {portfolio.watchlist.length} · 持仓 {portfolio.holdings.length}</small>
         </article>
       </section>
 
@@ -452,9 +607,35 @@ export default function PortfolioDashboard() {
       </div>
 
       <footer className={styles.footer}>
-        <span>本地数据 schema v1 · 清理浏览器数据会删除自选和持仓记录</span>
+        <span>{cloudAccount ? '云端数据 schema v1 · 当前设备保留用户缓存' : '本地数据 schema v1 · 清理浏览器数据会删除自选和持仓记录'}</span>
         <span>行情缺失时显示“—”，不会用模拟价格替代</span>
       </footer>
+
+      {migrationPrompt ? (
+        <div className={styles.modalBackdrop} role="presentation">
+          <section
+            className={styles.migrationModal}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="portfolio-migration-title"
+          >
+            <p className={styles.sectionKicker}>FIRST SYNC</p>
+            <h2 id="portfolio-migration-title">发现当前浏览器里的自选和持仓</h2>
+            <p>
+              {migrationPrompt.email ? `账号 ${migrationPrompt.email} 已登录。` : '你已登录云端账号。'}
+              是否把本机记录合并到云端？自选股会自动去重，持仓记录会全部保留。
+            </p>
+            <div className={styles.modalActions}>
+              <button type="button" onClick={() => void mergeAnonymousPortfolio()} disabled={migrationBusy}>
+                {migrationBusy ? '合并中…' : '合并到云端（推荐）'}
+              </button>
+              <button className={styles.secondaryButton} type="button" onClick={deferAnonymousPortfolio} disabled={migrationBusy}>
+                暂不处理
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </main>
   );
 }

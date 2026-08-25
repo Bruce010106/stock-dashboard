@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import AuthStatus from '../../components/auth/AuthStatus';
 
 type ProviderStatus = {
   id: string;
@@ -54,7 +55,7 @@ export default function DataPage() {
         <div className="sidebar-foot"><div className="data-status"><span className={`status-dot ${status?.healthy ? '' : 'amber'}`} />{status === null ? '连接检查中' : status.healthy ? '核心数据在线' : '核心数据异常'}</div><p>a-stock-data Provider</p></div>
       </aside>
       <section className="workspace">
-        <header className="topbar"><div><p className="eyebrow">数据中心 / Provider</p><h1>a-stock-data</h1></div><Link className="back-link" href="/">返回选股 →</Link></header>
+        <header className="topbar"><div><p className="eyebrow">数据中心 / Provider</p><h1>a-stock-data</h1></div><div className="topbar-actions"><AuthStatus nextPath="/data" /><Link className="back-link" href="/">返回选股 →</Link></div></header>
         <div className="data-hero">
           <div><span className="pill">LIVE · SERVER ONLY</span><h2>真实市场数据连接</h2><p>腾讯行情提供实时快照和分钟线，东方财富提供股票池，Tushare 提供点时历史指标；策略仍只依赖统一字段，不直接耦合上游格式。</p></div>
           <div className="contract-state"><strong>{status?.providers.filter((item) => item.healthy).length ?? '—'}</strong><span>可用数据源</span><small>{status?.latestQuoteAt ? `行情 ${new Date(status.latestQuoteAt).toLocaleString('zh-CN', { hour12: false })}` : '正在探测真实行情'}</small></div>

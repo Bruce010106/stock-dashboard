@@ -4,13 +4,17 @@ import {
   calculateHoldingValuation,
   calculatePortfolioTotals,
 } from '../lib/portfolio/calculations.ts';
-import { parsePortfolioState } from '../lib/portfolio/storage.ts';
+import {
+  mergePortfolioStates,
+  parsePortfolioCloudResponse,
+  parsePortfolioState,
+} from '../lib/portfolio/storage.ts';
 import {
   normalizePortfolioCode,
   validateHoldingDraft,
   validatePortfolioQuoteCodes,
 } from '../lib/portfolio/validation.ts';
-import type { PortfolioHolding, PortfolioQuote } from '../lib/portfolio/types.ts';
+import type { PortfolioHolding, PortfolioQuote, PortfolioState } from '../lib/portfolio/types.ts';
 
 const quote: PortfolioQuote = {
   code: '600519',
@@ -63,6 +67,49 @@ test('本地 schema 只接受当前版本并清理非法记录', () => {
   assert.deepEqual(parsed.watchlist, ['600519', '000001']);
   assert.equal(parsed.holdings.length, 1);
   assert.equal(parsePortfolioState({ schemaVersion: 0, watchlist: ['600519'], holdings: [] }).watchlist.length, 0);
+});
+
+test('首次登录合并时自选去重，持仓批次全部保留且重复导入幂等', () => {
+  const cloud: PortfolioState = {
+    schemaVersion: 1,
+    watchlist: ['600519'],
+    holdings: [{ ...holding, id: 'cloud-lot' }],
+  };
+  const browser: PortfolioState = {
+    schemaVersion: 1,
+    watchlist: ['SH600519', '000001'],
+    holdings: [
+      { ...holding, id: 'cloud-lot' },
+      { ...holding, id: 'browser-lot-2', quantity: 200 },
+      { ...holding, id: 'browser-lot', code: '000001' },
+    ],
+  };
+
+  const merged = mergePortfolioStates(cloud, browser);
+  assert.deepEqual(merged.watchlist, ['600519', '000001']);
+  assert.equal(merged.holdings.length, 3);
+  assert.equal(merged.holdings.some((item) => item.quantity === 200), true);
+  assert.equal(merged.holdings.some((item) => item.id === 'browser-lot'), true);
+  assert.deepEqual(mergePortfolioStates(cloud, browser), merged);
+});
+
+test('云端适配层同时接受完整状态和认证信封响应', () => {
+  const direct = parsePortfolioCloudResponse({
+    schemaVersion: 1,
+    watchlist: ['600519'],
+    holdings: [],
+  });
+  assert.equal(direct?.authenticated, true);
+  assert.deepEqual(direct?.portfolio.watchlist, ['600519']);
+
+  const envelope = parsePortfolioCloudResponse({
+    authenticated: true,
+    userId: 'user-1',
+    email: 'user@example.com',
+    portfolio: { schemaVersion: 1, watchlist: ['000001'], holdings: [] },
+  });
+  assert.equal(envelope?.userId, 'user-1');
+  assert.deepEqual(envelope?.portfolio.watchlist, ['000001']);
 });
 
 test('真实报价存在时计算市值和盈亏，缺报价时不伪造价格', () => {

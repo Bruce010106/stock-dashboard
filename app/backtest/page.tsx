@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import AuthStatus from '../../components/auth/AuthStatus';
 import BacktestPerformance from '../../components/backtest/backtest-performance';
 
 type BacktestSignal = {
@@ -105,7 +106,7 @@ export default function BacktestPage() {
       <section className="workspace">
         <header className="topbar">
           <div><p className="eyebrow">策略回测 / 真实历史信号</p><h1>杨永兴尾盘战法</h1></div>
-          <Link className="back-link" href="/">返回选股 →</Link>
+          <div className="topbar-actions"><AuthStatus nextPath="/backtest" /><Link className="back-link" href="/">返回选股 →</Link></div>
         </header>
 
         <div className="backtest-grid">

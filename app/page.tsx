@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
+import AuthStatus from '../components/auth/AuthStatus';
 import { MiniCandlestick } from '../components/screener/MiniCandlestick';
 import styles from '../components/screener/Screener.module.css';
 import {
@@ -177,7 +178,10 @@ export default function Home() {
             <p className="eyebrow">策略工作台 / 尾盘信号</p>
             <h1>杨永兴尾盘战法</h1>
           </div>
-          <div className="trade-state"><span className="status-dot" />{scan ? `最新交易日 ${scan.tradeDate}` : '真实行情按需读取'}</div>
+          <div className="topbar-actions">
+            <div className="trade-state"><span className="status-dot" />{scan ? `最新交易日 ${scan.tradeDate}` : '真实行情按需读取'}</div>
+            <AuthStatus nextPath="/" />
+          </div>
         </header>
 
         <div className="content-grid">

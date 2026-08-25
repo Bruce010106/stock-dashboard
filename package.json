@@ -10,9 +10,12 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
-    "test:strategy": "node --experimental-strip-types --test tests/*.test.ts"
+    "test:strategy": "node --experimental-strip-types --test tests/*.test.ts",
+    "db:migrate": "node --env-file=.env.local --experimental-strip-types scripts/migrate-supabase.ts"
   },
   "dependencies": {
+    "@supabase/ssr": "^0.12.5",
+    "@supabase/supabase-js": "^2.112.4",
     "next": "16.3.2",
     "react": "19.2.6",
     "react-dom": "19.2.6"
@@ -24,6 +27,7 @@
     "@types/react-dom": "19.2.3",
     "eslint": "9.39.4",
     "eslint-config-next": "16.3.2",
+    "postgres": "^3.4.9",
     "tailwindcss": "4.2.1",
     "typescript": "5.9.3"
   },

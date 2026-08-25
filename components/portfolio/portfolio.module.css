@@ -57,6 +57,13 @@
   line-height: 1.65;
 }
 
+.accountStack {
+  display: flex;
+  align-items: flex-end;
+  gap: 9px;
+  flex-direction: column;
+}
+
 .statusPill {
   display: inline-flex;
   align-items: center;
@@ -73,6 +80,11 @@
 
 .statusPill[data-state="error"] { color: #8f2c24; border-color: #efd0cc; background: #fbecea; }
 .statusPill[data-state="degraded"] { color: #765c2c; border-color: #e6dfcb; background: #fbf8ef; }
+.statusPill[data-state="offline"] { color: #765c2c; border-color: #e6dfcb; background: #fbf8ef; }
+.statusPill[data-state="syncing"],
+.statusPill[data-state="checking"] { color: #765c2c; border-color: #e6dfcb; background: #fbf8ef; }
+.statusPill[data-state="synced"] { color: #176b47; border-color: #cfe3d5; background: #edf7ef; }
+.statusPill[data-state="local"] { color: #566259; }
 
 .statusDot {
   width: 7px;
@@ -85,6 +97,10 @@
 .statusPill[data-state="ready"] .statusDot { background: #55c181; box-shadow: 0 0 0 4px rgba(85, 193, 129, .12); }
 .statusPill[data-state="loading"] .statusDot { background: #c69a47; box-shadow: 0 0 0 4px rgba(198, 154, 71, .12); }
 .statusPill[data-state="error"] .statusDot { background: #c54135; box-shadow: 0 0 0 4px rgba(197, 65, 53, .12); }
+.statusPill[data-state="offline"] .statusDot,
+.statusPill[data-state="syncing"] .statusDot,
+.statusPill[data-state="checking"] .statusDot { background: #c69a47; box-shadow: 0 0 0 4px rgba(198, 154, 71, .12); }
+.statusPill[data-state="synced"] .statusDot { background: #55c181; box-shadow: 0 0 0 4px rgba(85, 193, 129, .12); }
 
 .notice {
   display: flex;
@@ -350,6 +366,8 @@
   .header { display: block; }
   .backLink { margin-bottom: 15px; }
   .statusPill { margin-top: 17px; }
+  .accountStack { align-items: flex-start; margin-top: 17px; }
+  .accountStack .statusPill { margin-top: 0; }
   .notice { align-items: flex-start; flex-direction: column; gap: 11px; }
   .notice .secondaryButton { width: 100%; }
   .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
@@ -363,7 +381,51 @@
   .formActions button { flex: 1; }
   .footer { display: block; }
   .footer span { display: block; }
-  .footer span + span { margin-top: 4px; }
+.footer span + span { margin-top: 4px; }
 }
 .stockLink { color: inherit; text-decoration: none; }
 .stockLink:hover { color: #8b6525; text-decoration: underline; text-underline-offset: 3px; }
+
+.modalBackdrop {
+  position: fixed;
+  z-index: 20;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(20, 33, 26, .32);
+}
+
+.migrationModal {
+  width: min(460px, 100%);
+  padding: 27px;
+  border: 1px solid #dfe4dc;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 24px 70px rgba(20, 33, 26, .2);
+}
+
+.migrationModal h2 {
+  margin: 0;
+  font: 500 24px/1.25 Georgia, "Microsoft YaHei", serif;
+}
+
+.migrationModal > p:not(.sectionKicker) {
+  margin: 13px 0 0;
+  color: #667169;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.modalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 22px;
+}
+
+@media (max-width: 520px) {
+  .migrationModal { padding: 22px; }
+  .modalActions { flex-direction: column; }
+  .modalActions button { width: 100%; }
+}

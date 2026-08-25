@@ -11,6 +11,8 @@
 .header p, .panelHead p { margin: 0 0 7px; color: #8b7650; font: 600 10px var(--font-geist-mono), monospace; letter-spacing: .13em; }
 .header h1 { margin: 0; font: 500 clamp(28px, 4vw, 44px) Georgia, 'Microsoft YaHei', serif; }
 .header > a { color: #6d624d; font-size: 11px; text-decoration: none; }
+.headerActions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
+.headerActions > a { color: #6d624d; font-size: 11px; text-decoration: none; }
 .metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 24px 0 18px; }
 .metrics > div { padding: 17px; border: 1px solid #ddd6c6; border-radius: 10px; background: #fffdf8; }
 .metrics span, .metrics small { display: block; color: #807a6e; font-size: 10px; }
@@ -45,5 +47,6 @@
 @media (max-width: 580px) {
   .content { padding: 22px 14px 40px; }
   .header, .panelHead { flex-direction: column; }
+  .headerActions { justify-content: flex-start; }
   .metrics, .rules { grid-template-columns: 1fr; }
 }
