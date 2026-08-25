@@ -1,0 +1,326 @@
+.card {
+  margin-top: 20px;
+  padding: 24px 25px 0;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--panel);
+  box-shadow: 0 8px 28px rgba(29, 52, 40, .045);
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 22px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.header h2 {
+  margin: 10px 0 7px;
+  font: 500 23px Georgia, "Microsoft YaHei", serif;
+}
+
+.copy {
+  max-width: 720px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.rangeTabs {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #f8faf7;
+}
+
+.rangeButton,
+.rangeActive {
+  padding: 8px 10px;
+  border-radius: 6px;
+  box-shadow: none;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.rangeButton {
+  background: transparent;
+  color: var(--muted);
+}
+
+.rangeButton:hover {
+  background: #edf3ee;
+  color: var(--green);
+}
+
+.rangeActive {
+  background: var(--green);
+  color: white;
+}
+
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  padding: 18px 0;
+}
+
+.summaryMetric {
+  min-height: 89px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 13px 14px;
+  border: 1px solid #e5eae3;
+  border-radius: 10px;
+  background: #fbfcfa;
+}
+
+.summaryMetric > span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.summaryMetric strong {
+  font: 500 22px Georgia, serif;
+}
+
+.summaryMetric small {
+  color: #89928b;
+  font-size: 9px;
+  line-height: 1.35;
+}
+
+.positive {
+  color: var(--red);
+}
+
+.negative {
+  color: #2874a6;
+}
+
+.chartGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.chartCard {
+  min-width: 0;
+  padding: 14px 14px 9px;
+  border: 1px solid #e5eae3;
+  border-radius: 11px;
+  background: #fff;
+}
+
+.chartHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.chartHeader div {
+  display: grid;
+  gap: 4px;
+}
+
+.chartHeader strong {
+  font-size: 12px;
+}
+
+.chartHeader span {
+  color: #8a948c;
+  font-size: 9px;
+}
+
+.chartHeader b {
+  font: 700 12px monospace;
+}
+
+.chartFrame {
+  position: relative;
+  min-width: 0;
+  padding: 10px 0 0;
+}
+
+.chart {
+  display: block;
+  width: calc(100% - 30px);
+  height: 194px;
+  margin-left: 30px;
+  overflow: visible;
+}
+
+.gridLine {
+  stroke: #e8ede7;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.chartLine {
+  fill: none;
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.axisLabels {
+  position: absolute;
+  top: 22px;
+  bottom: 41px;
+  left: 0;
+  display: flex;
+  width: 28px;
+  flex-direction: column;
+  justify-content: space-between;
+  color: #9aa39d;
+  font: 9px monospace;
+  text-align: right;
+}
+
+.xAxis {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin: -1px 0 0 30px;
+  color: #9aa39d;
+  font: 9px monospace;
+}
+
+.xAxis span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.benchmark {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid #e6dfcb;
+  border-radius: 9px;
+  background: #fbf8ef;
+}
+
+.benchmarkTitle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #765c2c;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.benchmarkDot {
+  width: 7px;
+  height: 7px;
+  display: inline-block;
+  border: 1px solid #c69a47;
+  border-radius: 50%;
+}
+
+.benchmark strong {
+  color: #765c2c;
+  font: 700 12px monospace;
+}
+
+.benchmark p {
+  margin: 0;
+  color: #69665d;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.disclaimer {
+  margin: 14px -25px 0;
+  padding: 12px 25px;
+  border-top: 1px solid var(--line);
+  background: #fafbf8;
+  color: #8b948d;
+  font-size: 10px;
+  line-height: 1.55;
+}
+
+.empty {
+  display: grid;
+  gap: 6px;
+  margin: 18px 0 24px;
+  padding: 27px 18px;
+  border: 1px dashed #d6ded5;
+  border-radius: 10px;
+  background: #fafcf9;
+  color: var(--muted);
+  text-align: center;
+}
+
+.empty strong {
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.empty span {
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+@media (max-width: 900px) {
+  .header {
+    flex-direction: column;
+  }
+
+  .rangeTabs {
+    width: 100%;
+  }
+
+  .rangeButton,
+  .rangeActive {
+    flex: 1;
+  }
+
+  .summaryGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 680px) {
+  .card {
+    padding-inline: 17px;
+  }
+
+  .rangeButton,
+  .rangeActive {
+    padding-inline: 5px;
+    font-size: 10px;
+  }
+
+  .chartGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .benchmark {
+    grid-template-columns: auto auto;
+  }
+
+  .benchmark p {
+    grid-column: 1 / -1;
+  }
+
+  .disclaimer {
+    margin-inline: -17px;
+    padding-inline: 17px;
+  }
+}

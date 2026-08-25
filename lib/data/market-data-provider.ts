@@ -38,6 +38,7 @@ export type MinuteMarketBar = {
 
 export type MarketSnapshot = {
   code: string;
+  name?: string;
   timestamp: string;
   lastPrice: number;
   previousClose: number;

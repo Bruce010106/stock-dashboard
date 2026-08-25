@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import BacktestPerformance from '../../components/backtest/backtest-performance';
 
 type BacktestSignal = {
   signalDate: string;
@@ -96,6 +97,7 @@ export default function BacktestPage() {
         <nav aria-label="主导航">
           <Link className="nav-item" href="/"><span>◈</span>策略选股</Link>
           <Link className="nav-item active" href="/backtest"><span>↗</span>策略回测</Link>
+          <Link className="nav-item" href="/portfolio"><span>◎</span>自选与持仓</Link>
           <Link className="nav-item" href="/data"><span>⌘</span>数据中心</Link>
         </nav>
         <div className="sidebar-foot"><div className="data-status"><span className="status-dot" />Tushare 历史回测</div><p>点时指标 · 1 分钟线</p></div>
@@ -143,11 +145,13 @@ export default function BacktestPage() {
           </aside>
         </div>
 
+        {result ? <BacktestPerformance key={result.generatedAt} signals={result.signals} backtestEndDate={result.endDate} /> : null}
+
         <section className="results-card">
           <div className="results-head"><div><p className="eyebrow">信号明细</p><h2>{hasResult ? `严格信号 ${result.totalSignals} · 完整收益 ${result.completedSignals}` : '等待真实历史回测'}</h2></div><span className="sample-badge">{hasResult ? 'TUSHARE 真实数据' : '尚未运行'}</span></div>
           {result?.warnings.length ? <div className="source-note"><strong>口径说明</strong><span>{result.warnings.join('；')}</span></div> : null}
           <div className="table-wrap"><table><thead><tr><th>信号日期</th><th>股票</th><th>信号价</th><th>退出价</th><th>持有期</th><th>区间收益</th><th>突破时刻</th></tr></thead><tbody>
-            {result?.signals.map((signal) => <tr key={`${signal.signalDate}-${signal.code}`}><td>{signal.signalDate}</td><td><strong>{signal.name}</strong><small>{signal.code}</small></td><td>¥{signal.signalPrice.toFixed(2)}</td><td>¥{signal.exitPrice.toFixed(2)}</td><td>{signal.holdingTradingDays} 日</td><td className={signal.returnPct >= 0 ? 'positive' : 'negative'}>{signedPercent(signal.returnPct)}</td><td>{signal.evaluation.intraday.breakoutTime ?? '—'}</td></tr>)}
+            {result?.signals.map((signal) => <tr key={`${signal.signalDate}-${signal.code}`}><td>{signal.signalDate}</td><td><Link href={`/stocks/${signal.code}`}><strong>{signal.name}</strong><small>{signal.code}</small></Link></td><td>¥{signal.signalPrice.toFixed(2)}</td><td>¥{signal.exitPrice.toFixed(2)}</td><td>{signal.holdingTradingDays} 日</td><td className={signal.returnPct >= 0 ? 'positive' : 'negative'}>{signedPercent(signal.returnPct)}</td><td>{signal.evaluation.intraday.breakoutTime ?? '—'}</td></tr>)}
             {result && result.signals.length === 0 ? <tr><td colSpan={7} className="empty-state">真实数据扫描完成，该区间没有形成可计算收益的严格信号</td></tr> : null}
             {!result ? <tr><td colSpan={7} className="empty-state">配置股票和日期后运行；结果不再使用演示样本</td></tr> : null}
           </tbody></table></div>

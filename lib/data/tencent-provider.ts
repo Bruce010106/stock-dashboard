@@ -61,6 +61,7 @@ async function fetchQuoteChunk(codes: string[]): Promise<MarketSnapshot[]> {
     if (!code || stale || lastPrice <= 0 || previousClose <= 0) continue;
     snapshots.push({
       code,
+      name: fields[1]?.trim() || undefined,
       timestamp: decodeQuoteTimestamp(fields[30] ?? ''),
       lastPrice,
       previousClose,

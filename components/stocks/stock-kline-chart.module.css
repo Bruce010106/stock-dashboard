@@ -1,0 +1,35 @@
+.figure { margin: 0; }
+.toolbar, .quoteLine, .caption { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.toolbar { margin-bottom: 8px; }
+.legend, .ranges, .quoteLine, .caption { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.legend { font: 600 11px var(--font-geist-mono), monospace; }
+.ma5 { color: #b47c1b; }
+.ma10 { color: #4777b7; }
+.ma20 { color: #8a5fad; }
+.ranges button { border: 1px solid #ddd5c3; border-radius: 6px; padding: 5px 9px; background: #fffdf7; color: #6a6559; cursor: pointer; font: 600 10px var(--font-geist-mono), monospace; }
+.ranges button[aria-pressed='true'] { background: #252a24; border-color: #252a24; color: #fff; }
+.quoteLine { min-height: 25px; justify-content: flex-start; color: #777064; font: 500 10px var(--font-geist-mono), monospace; }
+.quoteLine strong { color: #292d28; }
+.chart { display: block; width: 100%; min-height: 330px; touch-action: pan-y; }
+.grid { stroke: #e9e3d5; stroke-width: 1; stroke-dasharray: 3 5; }
+.axis { fill: #918a7c; font: 10px var(--font-geist-mono), monospace; }
+.rising line, .rising rect { stroke: #c5403c; fill: #c5403c; }
+.falling line, .falling rect { stroke: #2e9567; fill: #2e9567; }
+.maLine { fill: none; stroke-width: 1.35; vector-effect: non-scaling-stroke; }
+.ma5Line { stroke: #b47c1b; }
+.ma10Line { stroke: #4777b7; }
+.ma20Line { stroke: #8a5fad; }
+.limitDot { fill: #d4a632 !important; stroke: #fff8df !important; stroke-width: 1.5; }
+.signal { fill: #8e2e2b !important; stroke: none !important; }
+.crosshair { stroke: #6d6a61; stroke-width: 1; stroke-dasharray: 4 3; pointer-events: none; }
+.caption { justify-content: flex-start; margin-top: 4px; color: #777064; font-size: 10px; }
+.caption span { display: inline-flex; align-items: center; gap: 5px; }
+.caption i { width: 7px; height: 7px; display: inline-block; }
+.limitKey { border-radius: 50%; background: #d4a632; }
+.signalKey { background: #8e2e2b; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+.empty { display: grid; min-height: 320px; place-items: center; color: #8a8478; }
+@media (max-width: 700px) {
+  .toolbar { align-items: flex-start; flex-direction: column; }
+  .chart { min-height: 270px; }
+  .quoteLine { gap: 7px 12px; }
+}

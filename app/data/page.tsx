@@ -48,6 +48,7 @@ export default function DataPage() {
         <nav aria-label="主导航">
           <Link className="nav-item" href="/"><span>◈</span>策略选股</Link>
           <Link className="nav-item" href="/backtest"><span>↗</span>策略回测</Link>
+          <Link className="nav-item" href="/portfolio"><span>◎</span>自选与持仓</Link>
           <Link className="nav-item active" href="/data"><span>⌘</span>数据中心</Link>
         </nav>
         <div className="sidebar-foot"><div className="data-status"><span className={`status-dot ${status?.healthy ? '' : 'amber'}`} />{status === null ? '连接检查中' : status.healthy ? '核心数据在线' : '核心数据异常'}</div><p>a-stock-data Provider</p></div>

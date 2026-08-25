@@ -9,10 +9,16 @@ import {
 export type LiveScreenMatch = {
   code: string;
   name: string;
+  /** Latest value from the Tencent snapshot used by the scan. */
+  lastPrice: number;
   changePct: number;
   totalMarketCapYuan: number;
+  /** Turnover amount is only returned when the current daily bar contains it. */
+  amountYuan?: number;
   volumeRatio: number;
   turnoverRatePct: number;
+  /** Compact historical daily bars for a read-only result-table sparkline. */
+  miniBars?: Array<Pick<DailyMarketBar, 'date' | 'open' | 'high' | 'low' | 'close'>>;
   breakoutTime?: string;
   breakoutLevel?: number;
   score: number;
@@ -180,6 +186,8 @@ async function executeScan(requestedCodes?: string[]): Promise<LiveScreenRespons
     const history = (dailyByCode.get(snapshot.code) ?? [])
       .filter((bar) => bar.date < tradeDate)
       .slice(-YANG_YONGXING_RULES.lookbackTradingDays);
+    const currentDailyBar = (dailyByCode.get(snapshot.code) ?? [])
+      .find((bar) => bar.date === tradeDate);
     const evaluation = evaluateYangYongxing({
       code: snapshot.code,
       name: nameByCode.get(snapshot.code) ?? snapshot.code,
@@ -193,10 +201,25 @@ async function executeScan(requestedCodes?: string[]): Promise<LiveScreenRespons
     const row: LiveScreenMatch = {
       code: snapshot.code,
       name: evaluation.name,
+      lastPrice: snapshot.lastPrice,
       changePct: changePct(snapshot),
       totalMarketCapYuan: snapshot.totalMarketCapYuan,
+      ...(currentDailyBar && currentDailyBar.amountYuan > 0
+        ? { amountYuan: currentDailyBar.amountYuan }
+        : {}),
       volumeRatio: snapshot.volumeRatio,
       turnoverRatePct: snapshot.turnoverRatePct,
+      ...(history.length > 0
+        ? {
+            miniBars: history.slice(-12).map((bar) => ({
+              date: bar.date,
+              open: bar.open,
+              high: bar.high,
+              low: bar.low,
+              close: bar.close,
+            })),
+          }
+        : {}),
       breakoutTime: evaluation.intraday.breakoutTime,
       breakoutLevel: evaluation.intraday.breakoutLevel,
       score: evaluation.score,
