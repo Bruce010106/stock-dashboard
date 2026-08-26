@@ -77,7 +77,9 @@ async function getSinaUniverse(): Promise<StockInstrument[]> {
   return instruments;
 }
 
-export async function getEastmoneyUniverse(): Promise<StockInstrument[]> {
+const MIN_PLAUSIBLE_UNIVERSE_SIZE = 4_000;
+
+async function fetchEastmoneyUniverse(): Promise<StockInstrument[]> {
   const params = new URLSearchParams({
     pn: '1',
     pz: '6000',
@@ -106,8 +108,33 @@ export async function getEastmoneyUniverse(): Promise<StockInstrument[]> {
   if (rows.length === 0) {
     throw new Error('东财股票池返回空数据');
   }
-  if (rows.length < (payload.data?.total ?? rows.length)) {
-    return getSinaUniverse();
+  const total = payload.data?.total ?? rows.length;
+  if (rows.length < total) {
+    throw new Error(`东财股票池数据不完整：${rows.length}/${total}`);
   }
-  return toInstruments(rows.map((row) => ({ code: row.f12, name: row.f14 })));
+
+  const instruments = toInstruments(rows.map((row) => ({ code: row.f12, name: row.f14 })));
+  if (instruments.length < MIN_PLAUSIBLE_UNIVERSE_SIZE) {
+    throw new Error(`东财股票池数量异常偏少：${instruments.length}`);
+  }
+  return instruments;
+}
+
+function describeFailure(error: unknown): string {
+  const message = error instanceof Error ? error.message : '未知错误';
+  return message.replace(/https?:\/\/\S+/gi, '[地址已隐藏]').slice(0, 200);
+}
+
+export async function getEastmoneyUniverse(): Promise<StockInstrument[]> {
+  try {
+    return await fetchEastmoneyUniverse();
+  } catch (eastmoneyError) {
+    try {
+      return await getSinaUniverse();
+    } catch (sinaError) {
+      throw new Error(
+        `股票池获取失败：东方财富源（${describeFailure(eastmoneyError)}）与新浪财经源（${describeFailure(sinaError)}）均不可用，请稍后重试`,
+      );
+    }
+  }
 }

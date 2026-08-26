@@ -18,6 +18,7 @@ type DataStatus = {
   healthy: boolean;
   latestQuoteAt?: string;
   historyMode: 'tushare' | 'tencent-fallback';
+  backtestMode?: 'tushare-exact' | 'sina-free-approximate';
   providers: ProviderStatus[];
   warnings?: string[];
 };
@@ -39,7 +40,7 @@ export default function DataPage() {
   const datasets = status?.providers ?? [
     { id: 'tencent', name: '腾讯实时行情', configured: true, healthy: false, role: '正在检查连接' },
     { id: 'eastmoney', name: '全市场股票池', configured: true, healthy: false, role: '正在检查连接' },
-        { id: 'tushare', name: 'Tushare Pro', configured: false, healthy: false, role: '历史日线 / 点时指标 / 历史分钟回测' },
+    { id: 'tushare', name: 'Tushare Pro', configured: false, healthy: false, role: '可选精确增强源；未配置时回测自动使用新浪财经免费近似源' },
   ];
 
   return (
@@ -69,7 +70,7 @@ export default function DataPage() {
         </section>
         <div className="data-cautions">
           <article><span>01</span><div><strong>先粗筛，再读取分钟线</strong><p>全市场实时快照批量读取；只有通过前五项条件的少量股票继续读取日线和分钟线。</p></div></article>
-          <article><span>02</span><div><strong>自动降级</strong><p>未配置或暂时无法访问 Tushare 时，今日选股自动使用腾讯不复权日线，不影响实时筛选入口。</p></div></article>
+          <article><span>02</span><div><strong>自动降级</strong><p>未配置或暂时无法访问 Tushare 时，今日选股自动使用腾讯不复权日线，不影响实时筛选入口；策略回测自动切换到新浪财经免费数据源（5 分钟近似口径，单次区间最长 30 天），仍可正常运行，不会因缺少 Tushare 而不可用。</p></div></article>
           <article><span>03</span><div><strong>密钥仅在服务端</strong><p>TUSHARE_TOKEN 不会发送到浏览器，也不会使用 NEXT_PUBLIC_ 前缀打入手机端代码。</p></div></article>
         </div>
       </section>

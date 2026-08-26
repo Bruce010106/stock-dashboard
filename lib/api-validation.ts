@@ -22,7 +22,8 @@ export const MAX_FUTURE_CLOSES_PER_EVENT = 366;
 export const MAX_HOLDING_TRADING_DAYS = 366;
 export const DEFAULT_HOLDING_TRADING_DAYS = 5;
 export const MAX_LIVE_BACKTEST_CODES = 5;
-export const MAX_LIVE_BACKTEST_CALENDAR_DAYS = 90;
+export const MAX_LIVE_BACKTEST_CALENDAR_DAYS_TUSHARE = 90;
+export const MAX_LIVE_BACKTEST_CALENDAR_DAYS_FREE = 30;
 export const LIVE_BACKTEST_HOLDING_DAYS = [1, 3, 5, 10] as const;
 
 const MAX_TEXT_LENGTH = 200;
@@ -319,8 +320,14 @@ export type LiveBacktestQuery = {
   holdingTradingDays: number;
 };
 
+export type LiveBacktestQueryOptions = {
+  /** Whether Tushare is configured; determines the allowed date-span cap. */
+  tushareConfigured: boolean;
+};
+
 export function validateLiveBacktestQuery(
   searchParams: URLSearchParams,
+  options: LiveBacktestQueryOptions,
 ): ValidationResult<LiveBacktestQuery> {
   const rawCodes = searchParams.get('codes')?.split(',')
     .map((code) => code.trim())
@@ -348,8 +355,14 @@ export function validateLiveBacktestQuery(
   const endTime = Date.parse(`${endDate}T00:00:00Z`);
   if (startTime > endTime) return invalid('回测区间', ' 的开始日期不能晚于结束日期');
   const calendarDays = Math.floor((endTime - startTime) / 86_400_000) + 1;
-  if (calendarDays > MAX_LIVE_BACKTEST_CALENDAR_DAYS) {
-    return invalid('回测区间', ` 不能超过 ${MAX_LIVE_BACKTEST_CALENDAR_DAYS} 个自然日`);
+  const maxCalendarDays = options.tushareConfigured
+    ? MAX_LIVE_BACKTEST_CALENDAR_DAYS_TUSHARE
+    : MAX_LIVE_BACKTEST_CALENDAR_DAYS_FREE;
+  if (calendarDays > maxCalendarDays) {
+    return invalid(
+      '回测区间',
+      ` 不能超过 ${maxCalendarDays} 个自然日（${options.tushareConfigured ? 'Tushare 精确模式' : '新浪免费近似模式'}）`,
+    );
   }
 
   const holdingRaw = searchParams.get('holdingTradingDays') ?? String(DEFAULT_HOLDING_TRADING_DAYS);

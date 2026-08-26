@@ -67,6 +67,7 @@ async function fetchQuoteChunk(codes: string[]): Promise<MarketSnapshot[]> {
       previousClose,
       turnoverRatePct: parseNumber(fields[38]),
       totalMarketCapYuan: parseNumber(fields[45]) * 100_000_000,
+      circulatingMarketCapYuan: fields[44] ? parseNumber(fields[44]) * 100_000_000 : undefined,
       volumeRatio: parseNumber(fields[49]),
     });
   }

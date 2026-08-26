@@ -45,6 +45,7 @@ export type MarketSnapshot = {
   volumeRatio: number;
   turnoverRatePct: number;
   totalMarketCapYuan: number;
+  circulatingMarketCapYuan?: number;
 };
 
 export interface MarketDataProvider {
@@ -57,6 +58,17 @@ export interface MarketDataProvider {
   ): Promise<DailyMarketBar[]>;
   getMinuteBars(codes: string[], date: string): Promise<MinuteMarketBar[]>;
   getSnapshots(codes: string[]): Promise<MarketSnapshot[]>;
+}
+
+/**
+ * Lives here (rather than in lib/backtest/live-yang-yongxing.ts) so data
+ * providers can implement it without importing from the backtest module,
+ * which would create a circular import.
+ */
+export interface HistoricalBacktestDataProvider {
+  getUniverse(asOfDate: string): Promise<StockInstrument[]>;
+  getDailyBars(codes: string[], startDate: string, endDate: string): Promise<DailyMarketBar[]>;
+  getHistoricalMinuteBars(code: string, date: string): Promise<MinuteMarketBar[]>;
 }
 
 export const A_STOCK_DATA_FIELD_CONTRACT = {

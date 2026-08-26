@@ -54,13 +54,17 @@ export async function GET() {
       ? errorMessage(tushareProbe.reason, 'Tushare 探测失败，将使用腾讯历史降级')
       : 'Tushare 未通过探测，将使用腾讯历史降级',
   );
-  if (!configured) warnings.push('未配置 Tushare，历史日线使用腾讯降级源');
+  if (!configured) warnings.push(
+    '未配置 Tushare：今日选股使用腾讯不复权日线降级；策略回测仍可用，自动切换到新浪财经免费数据源（5 分钟近似口径，单次区间最长 30 天）',
+  );
 
   // healthy means the core live-scan dependencies are reachable. Tushare is
-  // an optional historical enhancement; its failure is represented by
-  // degraded/historyMode instead of making the whole service unhealthy.
+  // an optional historical enhancement — even fully absent, backtesting
+  // still works via the free Sina fallback — so its absence never makes the
+  // whole service unhealthy, only degraded/historyMode.
   const healthy = tencentHealthy && universeHealthy;
   const historyMode = tushareHealthy ? 'tushare' : 'tencent-fallback';
+  const backtestMode = tushareHealthy ? 'tushare-exact' : 'sina-free-approximate';
 
   return Response.json({
     checkedAt,
@@ -94,13 +98,16 @@ export async function GET() {
         name: 'Tushare Pro',
         configured,
         healthy: tushareHealthy,
-        role: '历史日线 / 点时指标 / 历史分钟回测',
+        role: configured
+          ? '历史日线 / 点时指标 / 历史分钟回测（1 分钟精确口径）'
+          : '可选精确增强源；未配置时回测自动使用新浪财经免费近似源',
         ...(tushareProbe.status === 'rejected'
           ? { error: errorMessage(tushareProbe.reason, 'Tushare 探测失败') }
           : {}),
       },
     ],
     historyMode,
+    backtestMode,
     warnings,
   }, {
     status: healthy ? 200 : 503,

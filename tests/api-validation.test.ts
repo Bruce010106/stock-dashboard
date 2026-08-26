@@ -3,10 +3,18 @@ import test from 'node:test';
 import {
   MAX_CANDIDATES_PER_REQUEST,
   MAX_EVENTS_PER_REQUEST,
+  MAX_LIVE_BACKTEST_CALENDAR_DAYS_FREE,
+  MAX_LIVE_BACKTEST_CALENDAR_DAYS_TUSHARE,
   validateLiveBacktestQuery,
   validateYangYongxingBacktestPayload,
   validateYangYongxingStrategyPayload,
 } from '../lib/api-validation.ts';
+
+function daysFromStart(startDate: string, calendarDays: number): string {
+  const start = new Date(`${startDate}T00:00:00Z`);
+  start.setUTCDate(start.getUTCDate() + calendarDays - 1);
+  return start.toISOString().slice(0, 10);
+}
 
 const candidate = {
   code: '000001',
@@ -99,7 +107,7 @@ test('真实回测查询归一化代码并限制区间和持有期', () => {
     startDate: '2026-06-01',
     endDate: '2026-08-24',
     holdingTradingDays: '5',
-  }));
+  }), { tushareConfigured: true });
   assert.equal(valid.ok, true);
   if (valid.ok) assert.deepEqual(valid.value.codes, ['000001', '600519']);
 
@@ -108,6 +116,62 @@ test('真实回测查询归一化代码并限制区间和持有期', () => {
     startDate: '2026-01-01',
     endDate: '2026-08-24',
     holdingTradingDays: '2',
-  }));
+  }), { tushareConfigured: true });
   assert.equal(tooLong.ok, false);
+});
+
+test('Tushare 模式下区间上限为 90 个自然日，免费新浪模式为 30 个自然日', () => {
+  const startDate = '2026-06-01';
+
+  const tushareAtLimit = validateLiveBacktestQuery(new URLSearchParams({
+    codes: '000001',
+    startDate,
+    endDate: daysFromStart(startDate, MAX_LIVE_BACKTEST_CALENDAR_DAYS_TUSHARE),
+    holdingTradingDays: '5',
+  }), { tushareConfigured: true });
+  assert.equal(tushareAtLimit.ok, true);
+
+  const tushareOverLimit = validateLiveBacktestQuery(new URLSearchParams({
+    codes: '000001',
+    startDate,
+    endDate: daysFromStart(startDate, MAX_LIVE_BACKTEST_CALENDAR_DAYS_TUSHARE + 1),
+    holdingTradingDays: '5',
+  }), { tushareConfigured: true });
+  assert.equal(tushareOverLimit.ok, false);
+  if (!tushareOverLimit.ok) assert.match(tushareOverLimit.error, /90/);
+
+  const freeAtLimit = validateLiveBacktestQuery(new URLSearchParams({
+    codes: '000001',
+    startDate,
+    endDate: daysFromStart(startDate, MAX_LIVE_BACKTEST_CALENDAR_DAYS_FREE),
+    holdingTradingDays: '5',
+  }), { tushareConfigured: false });
+  assert.equal(freeAtLimit.ok, true);
+
+  const freeOverLimit = validateLiveBacktestQuery(new URLSearchParams({
+    codes: '000001',
+    startDate,
+    endDate: daysFromStart(startDate, MAX_LIVE_BACKTEST_CALENDAR_DAYS_FREE + 1),
+    holdingTradingDays: '5',
+  }), { tushareConfigured: false });
+  assert.equal(freeOverLimit.ok, false);
+  if (!freeOverLimit.ok) assert.match(freeOverLimit.error, /30/);
+
+  // The same 60-day span is accepted under Tushare's 90-day cap but rejected
+  // under the free 30-day cap — this is a deliberate, deterministic
+  // difference in behavior, not silent truncation.
+  const sixtyDaySpan = {
+    codes: '000001',
+    startDate,
+    endDate: daysFromStart(startDate, 60),
+    holdingTradingDays: '5',
+  };
+  assert.equal(
+    validateLiveBacktestQuery(new URLSearchParams(sixtyDaySpan), { tushareConfigured: true }).ok,
+    true,
+  );
+  assert.equal(
+    validateLiveBacktestQuery(new URLSearchParams(sixtyDaySpan), { tushareConfigured: false }).ok,
+    false,
+  );
 });

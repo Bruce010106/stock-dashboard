@@ -9,12 +9,15 @@ import {
   validateLiveBacktestQuery,
   validateYangYongxingBacktestPayload,
 } from '../../../../lib/api-validation';
+import { isTushareConfigured } from '../../../../lib/data/tushare-provider';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
 export async function GET(request: Request) {
-  const validated = validateLiveBacktestQuery(new URL(request.url).searchParams);
+  const validated = validateLiveBacktestQuery(new URL(request.url).searchParams, {
+    tushareConfigured: isTushareConfigured(),
+  });
   if (!validated.ok) {
     return Response.json({ error: validated.error }, { status: 400 });
   }

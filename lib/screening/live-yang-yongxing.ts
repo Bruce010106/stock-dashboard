@@ -53,6 +53,17 @@ export type LiveScreenResponse = {
 let cachedScan: { expiresAt: number; value: LiveScreenResponse } | undefined;
 let activeScan: Promise<LiveScreenResponse> | undefined;
 
+/**
+ * The scan's daily history can fall back from Tushare to Tencent at runtime
+ * (see getDailyBarsWithSource()), so the reported source must reflect the
+ * historyMode actually used, never a static provider label.
+ */
+export function describeLiveScreenSource(historyMode: 'tushare' | 'tencent-fallback'): string {
+  return historyMode === 'tushare'
+    ? '腾讯实时行情/分钟线 + Tushare 历史日线'
+    : '腾讯实时行情/分钟线 + 腾讯历史日线降级';
+}
+
 function calendarDaysBefore(date: string, days: number): string {
   const value = new Date(`${date}T00:00:00+08:00`);
   value.setUTCDate(value.getUTCDate() - days);
@@ -138,7 +149,7 @@ async function executeScan(requestedCodes?: string[]): Promise<LiveScreenRespons
       strategy: 'yang-yongxing-tail-1430',
       tradeDate,
       generatedAt: new Date().toISOString(),
-      source: marketDataProvider.name,
+      source: describeLiveScreenSource(historyMode),
       historyMode,
       isFallback,
       scanned: targetUniverse.length,
@@ -243,7 +254,7 @@ async function executeScan(requestedCodes?: string[]): Promise<LiveScreenRespons
     strategy: 'yang-yongxing-tail-1430',
     tradeDate,
     generatedAt: new Date().toISOString(),
-    source: marketDataProvider.name,
+    source: describeLiveScreenSource(historyMode),
     historyMode,
     isFallback,
     scanned: targetUniverse.length,
