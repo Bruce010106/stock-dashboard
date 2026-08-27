@@ -54,7 +54,7 @@ type BacktestResponse = {
 };
 
 type DataStatusProbe = {
-  providers: { id: string; configured: boolean }[];
+  backtestMode: 'tushare-exact' | 'sina-free-approximate';
 };
 
 function hongKongDate(date: Date): string {
@@ -86,6 +86,11 @@ export default function BacktestPage() {
   const [isRunning, setIsRunning] = useState(false);
   const [result, setResult] = useState<BacktestResponse | null>(null);
   const [error, setError] = useState('');
+  // Despite the name (kept for minimal diff against the rest of the page),
+  // this reflects the server's health-checked backtestMode, not merely
+  // whether a Tushare token is configured — a configured-but-bad token
+  // reports 'sina-free-approximate' here too, so the pre-run UI (cap, mode
+  // label) matches what the run will actually use.
   const [tushareConfigured, setTushareConfigured] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -93,8 +98,7 @@ export default function BacktestPage() {
     fetch('/api/data-status')
       .then(async (response) => {
         const payload = await response.json() as DataStatusProbe;
-        const configured = payload.providers?.find((item) => item.id === 'tushare')?.configured ?? false;
-        if (active) setTushareConfigured(configured);
+        if (active) setTushareConfigured(payload.backtestMode === 'tushare-exact');
       })
       .catch(() => { if (active) setTushareConfigured(false); });
     return () => { active = false; };
@@ -168,7 +172,7 @@ export default function BacktestPage() {
                 ? '正在检测是否配置 Tushare…'
                 : tushareConfigured
                   ? '已配置 Tushare：使用历史日线、每日点时指标和 1 分钟线重放信号；先用前五项条件粗筛，再按需读取候选日期分钟线。'
-                  : '未配置 Tushare：使用新浪财经免费 K 线数据源，以 5 分钟线近似重放信号；历史总市值、换手率与量比为静态估算值，非交易所口径。'}
+                  : '当前使用新浪免费模式（未配置 Tushare，或已配置但探测未通过）：使用新浪财经免费 K 线数据源，以 5 分钟线近似重放信号；历史总市值、换手率与量比为静态估算值，非交易所口径。'}
             </p>
             <div className="field-grid">
               <label>股票代码（最多 5 只）

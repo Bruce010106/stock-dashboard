@@ -3,7 +3,8 @@ import type {
   HistoricalBacktestDataProvider,
 } from '../data/market-data-provider.ts';
 import {
-  isTushareConfigured,
+  isTushareAvailable,
+  sanitizeTushareError,
   TushareMarketDataProvider,
 } from '../data/tushare-provider.ts';
 import {
@@ -15,6 +16,10 @@ import {
   YANG_YONGXING_RULES,
   type YangYongxingCandidate,
 } from '../strategies/yang-yongxing.ts';
+import {
+  calendarDaySpan,
+  MAX_LIVE_BACKTEST_CALENDAR_DAYS_FREE,
+} from '../api-validation.ts';
 import {
   runYangYongxingForwardBacktest,
   type ForwardBacktestResult,
@@ -57,7 +62,9 @@ export class LiveBacktestDataError extends Error {
     | 'NO_VALID_CODES'
     | 'HISTORICAL_MINUTE_UNAVAILABLE'
     | 'NO_DAILY_DATA'
-    | 'SIGNAL_MINUTE_DATA_MISSING';
+    | 'REQUIRED_METRICS_MISSING'
+    | 'SIGNAL_MINUTE_DATA_MISSING'
+    | 'TUSHARE_UPSTREAM_UNAVAILABLE';
   readonly status: number;
 
   constructor(
@@ -66,7 +73,9 @@ export class LiveBacktestDataError extends Error {
       | 'NO_VALID_CODES'
       | 'HISTORICAL_MINUTE_UNAVAILABLE'
       | 'NO_DAILY_DATA'
-      | 'SIGNAL_MINUTE_DATA_MISSING',
+      | 'REQUIRED_METRICS_MISSING'
+      | 'SIGNAL_MINUTE_DATA_MISSING'
+      | 'TUSHARE_UPSTREAM_UNAVAILABLE',
     status = 503,
   ) {
     super(message);
@@ -85,13 +94,26 @@ type ProviderMetadata = {
 };
 
 /**
- * Picks the live provider automatically: Tushare's exact, point-in-time data
- * when a token is configured, otherwise Sina's free, approximate data. This
- * only runs when the caller does not inject a provider explicitly (e.g. in
- * unit tests), so tests never need environment configuration.
+ * Maps an already-resolved health result to a provider instance. Split out
+ * from selectDefaultProvider so a caller that already health-checked Tushare
+ * (e.g. the route handler, to decide the 30/90-day cap) can reuse that same
+ * result instead of triggering a second checkTushareHealth call.
  */
-export function selectDefaultProvider(): HistoricalBacktestDataProvider {
-  return isTushareConfigured() ? new TushareMarketDataProvider() : new SinaMarketDataProvider();
+export function providerForTushareHealth(tushareHealthy: boolean): HistoricalBacktestDataProvider {
+  return tushareHealthy ? new TushareMarketDataProvider() : new SinaMarketDataProvider();
+}
+
+/**
+ * Picks the live provider automatically: Tushare's exact, point-in-time data
+ * when the token is configured AND actually reachable (health-checked, short
+ * TTL cache — see checkTushareHealth), otherwise Sina's free, approximate
+ * data. A configured-but-bad token (revoked, expired, wrong permissions)
+ * therefore goes straight to Sina instead of failing the request. This only
+ * runs when the caller does not inject a provider explicitly (e.g. in unit
+ * tests), so tests never need environment configuration or network access.
+ */
+export async function selectDefaultProvider(): Promise<HistoricalBacktestDataProvider> {
+  return providerForTushareHealth(await isTushareAvailable());
 }
 
 /**
@@ -146,14 +168,32 @@ function groupDailyBars(bars: DailyMarketBar[]): Map<string, DailyMarketBar[]> {
   return grouped;
 }
 
+type DailyMarketBarWithRequiredMetrics = DailyMarketBar & {
+  totalMarketCapYuan: number;
+  volumeRatio: number;
+  turnoverRatePct: number;
+};
+
+/**
+ * Distinguishes "missing" (undefined/NaN — e.g. Sina's Tencent snapshot
+ * fetch failed for this day) from "present but zero" (a real reading that
+ * happens to fail the strategy's thresholds). Only the former may never be
+ * silently substituted with 0, since that would fabricate a value the
+ * strategy could act on.
+ */
+function hasRequiredMetrics(bar: DailyMarketBar): bar is DailyMarketBarWithRequiredMetrics {
+  return Number.isFinite(bar.totalMarketCapYuan) &&
+    Number.isFinite(bar.volumeRatio) &&
+    Number.isFinite(bar.turnoverRatePct);
+}
+
 function dailyCandidate(
   code: string,
   name: string,
   bars: DailyMarketBar[],
   index: number,
-): Omit<YangYongxingCandidate, 'minuteBars'> | undefined {
-  const current = bars[index];
-  if (!current || current.previousClose <= 0) return undefined;
+  current: DailyMarketBarWithRequiredMetrics,
+): Omit<YangYongxingCandidate, 'minuteBars'> {
   const recentDailyBars = bars.slice(
     Math.max(0, index - YANG_YONGXING_RULES.lookbackTradingDays),
     index,
@@ -162,9 +202,9 @@ function dailyCandidate(
     code,
     name,
     changePct: (current.close / current.previousClose - 1) * 100,
-    totalMarketCapYuan: current.totalMarketCapYuan ?? 0,
-    volumeRatio: current.volumeRatio ?? 0,
-    turnoverRatePct: current.turnoverRatePct ?? 0,
+    totalMarketCapYuan: current.totalMarketCapYuan,
+    volumeRatio: current.volumeRatio,
+    turnoverRatePct: current.turnoverRatePct,
     recentDailyBars: recentDailyBars.map((bar) => ({
       date: bar.date,
       close: bar.close,
@@ -253,9 +293,59 @@ async function loadEvents(
   return { events, loaded, emptyMinuteDays };
 }
 
+/**
+ * Runs the backtest against the caller-chosen provider, applying a runtime
+ * fallback to Sina when the actual Tushare provider fails mid-run (bad
+ * token revoked after the health check, upstream outage, missing stk_mins
+ * permission, etc.) — as opposed to selectDefaultProvider's upfront health
+ * check, which only catches failures that are already known at request
+ * time. Business-logic errors (NO_VALID_CODES, a 4xx) are never retried:
+ * they reflect the requested codes/state, not the data source's health, and
+ * would fail identically against Sina.
+ */
 export async function runLiveYangYongxingBacktest(
   request: LiveYangYongxingBacktestRequest,
-  provider: HistoricalBacktestDataProvider = selectDefaultProvider(),
+  provider?: HistoricalBacktestDataProvider,
+): Promise<LiveYangYongxingBacktestResponse> {
+  const resolvedProvider = provider ?? await selectDefaultProvider();
+  try {
+    return await executeLiveYangYongxingBacktest(request, resolvedProvider);
+  } catch (error) {
+    if (!isRetryableTushareFailure(error, resolvedProvider)) throw error;
+
+    const requestedDays = calendarDaySpan(request.startDate, request.endDate);
+    if (requestedDays > MAX_LIVE_BACKTEST_CALENDAR_DAYS_FREE) {
+      throw new LiveBacktestDataError(
+        `Tushare 数据获取失败（${sanitizeTushareError(error)}），且回测区间 ${requestedDays} 天超过免费新浪源上限 ${MAX_LIVE_BACKTEST_CALENDAR_DAYS_FREE} 天，无法自动降级；请将区间缩短至 ${MAX_LIVE_BACKTEST_CALENDAR_DAYS_FREE} 天以内后重试`,
+        'TUSHARE_UPSTREAM_UNAVAILABLE',
+        503,
+      );
+    }
+
+    const fallbackResult = await executeLiveYangYongxingBacktest(request, new SinaMarketDataProvider());
+    return {
+      ...fallbackResult,
+      warnings: [
+        `Tushare 数据获取失败，已自动切换到新浪财经免费近似源重跑：${sanitizeTushareError(error)}`,
+        ...fallbackResult.warnings,
+      ],
+    };
+  }
+}
+
+/** Only Tushare's own upstream/permission failures are retried against Sina — not a 4xx business error (e.g. NO_VALID_CODES), and not a failure from an explicitly injected non-Tushare provider. */
+function isRetryableTushareFailure(
+  error: unknown,
+  provider: HistoricalBacktestDataProvider,
+): boolean {
+  if (!(provider instanceof TushareMarketDataProvider)) return false;
+  if (error instanceof LiveBacktestDataError && error.status < 500) return false;
+  return true;
+}
+
+async function executeLiveYangYongxingBacktest(
+  request: LiveYangYongxingBacktestRequest,
+  provider: HistoricalBacktestDataProvider,
 ): Promise<LiveYangYongxingBacktestResponse> {
   const meta = metadataFor(provider);
 
@@ -294,7 +384,9 @@ export async function runLiveYangYongxingBacktest(
   }
 
   const prefiltered: PrefilteredDay[] = [];
+  const missingMetricsDays: { code: string; date: string }[] = [];
   let scannedTradingDays = 0;
+  let eligibleTradingDays = 0;
   for (const code of evaluatedCodes) {
     const bars = dailyByCode.get(code) ?? [];
     const name = instrumentByCode.get(code)?.name ?? code;
@@ -302,8 +394,14 @@ export async function runLiveYangYongxingBacktest(
       const bar = bars[index];
       if (!bar || bar.date < request.startDate || bar.date > request.endDate) continue;
       scannedTradingDays += 1;
-      const candidate = dailyCandidate(code, name, bars, index);
-      if (candidate && passesFirstFiveRules(candidate)) {
+      if (bar.previousClose <= 0) continue;
+      eligibleTradingDays += 1;
+      if (!hasRequiredMetrics(bar)) {
+        missingMetricsDays.push({ code, date: bar.date });
+        continue;
+      }
+      const candidate = dailyCandidate(code, name, bars, index, bar);
+      if (passesFirstFiveRules(candidate)) {
         prefiltered.push({
           code,
           date: bar.date,
@@ -314,6 +412,15 @@ export async function runLiveYangYongxingBacktest(
         });
       }
     }
+  }
+
+  if (eligibleTradingDays > 0 && missingMetricsDays.length === eligibleTradingDays) {
+    const codes = [...new Set(missingMetricsDays.map((day) => day.code))];
+    throw new LiveBacktestDataError(
+      `所选股票在区间内可扫描的交易日均缺少总市值、量比或换手率等必需指标，数据源暂不可用：${codes.join('、')}`,
+      'REQUIRED_METRICS_MISSING',
+      503,
+    );
   }
 
   const { events, loaded, emptyMinuteDays } = await loadEvents(
@@ -340,6 +447,16 @@ export async function runLiveYangYongxingBacktest(
   ];
   if (missingDailyCodes.length > 0) {
     warnings.push(`以下股票在区间内无有效日线数据，已跳过：${missingDailyCodes.join('、')}`);
+  }
+  if (missingMetricsDays.length > 0) {
+    const daysByCode = new Map<string, number>();
+    for (const day of missingMetricsDays) {
+      daysByCode.set(day.code, (daysByCode.get(day.code) ?? 0) + 1);
+    }
+    const summary = [...daysByCode.entries()]
+      .map(([code, count]) => `${code}（${count} 个交易日）`)
+      .join('、');
+    warnings.push(`以下股票存在缺少总市值、量比或换手率等必需指标的交易日，已跳过：${summary}`);
   }
   if (emptyMinuteDays.length > 0) {
     const codes = [...new Set(emptyMinuteDays.map((day) => day.code))];

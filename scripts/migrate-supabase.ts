@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import postgres from 'postgres';
+import { resolveMigrationChecksum } from '../lib/db/migration-checksums.ts';
 
 const connectionString = process.env.POSTGRES_URL_NON_POOLING
   ?? process.env.POSTGRES_URL;
@@ -40,11 +41,19 @@ try {
       where name = ${file}
     `;
 
-    if (applied[0]?.checksum === checksum) {
+    const decision = resolveMigrationChecksum(file, checksum, applied[0]?.checksum);
+    if (decision === 'match') {
       console.log(`skip ${file}`);
       continue;
     }
-    if (applied.length > 0) {
+    if (decision === 'legacy-match') {
+      console.warn(
+        `skip ${file} (checksum differs from a known legacy deployment; ` +
+          `see lib/db/migration-checksums.ts for why this is tolerated)`,
+      );
+      continue;
+    }
+    if (decision === 'conflict') {
       throw new Error(`迁移 ${file} 已执行但内容发生变化，请创建新的迁移文件。`);
     }
 

@@ -82,6 +82,60 @@ export async function probeTushareConnection(): Promise<boolean> {
   return rows.some((row) => String(row.symbol) === '000001');
 }
 
+export type TushareHealthResult = { healthy: boolean; error?: string };
+
+type TushareHealthCacheEntry = TushareHealthResult & { expiresAt: number };
+
+const TUSHARE_HEALTH_CACHE_TTL_MS = 30_000;
+
+let tushareHealthCache: TushareHealthCacheEntry | null = null;
+
+/** Exported so callers outside this module (e.g. the live-backtest fallback) can describe a Tushare failure in a warning/error message without leaking upstream URLs. */
+export function sanitizeTushareError(error: unknown): string {
+  const message = error instanceof Error ? error.message : '未知错误';
+  return message.replace(/https?:\/\/\S+/gi, '[地址已隐藏]').slice(0, 200);
+}
+
+/**
+ * Caches the Tushare health probe for a short TTL so every backtest request
+ * and /api/data-status call doesn't each fire their own live upstream probe.
+ * A failed probe is cached with the same short TTL as a success (never
+ * indefinitely), so a token that starts working again is picked up quickly.
+ * Accepts an injectable prober/TTL purely so tests can exercise the caching
+ * behavior without real network access or waiting on wall-clock time.
+ */
+export async function checkTushareHealth(
+  prober: () => Promise<boolean> = probeTushareConnection,
+  ttlMs: number = TUSHARE_HEALTH_CACHE_TTL_MS,
+): Promise<TushareHealthResult> {
+  if (!isTushareConfigured()) return { healthy: false };
+
+  const now = Date.now();
+  if (tushareHealthCache && tushareHealthCache.expiresAt > now) {
+    return { healthy: tushareHealthCache.healthy, error: tushareHealthCache.error };
+  }
+
+  let result: TushareHealthResult;
+  try {
+    result = (await prober())
+      ? { healthy: true }
+      : { healthy: false, error: 'Tushare 探测未返回预期数据' };
+  } catch (error) {
+    result = { healthy: false, error: sanitizeTushareError(error) };
+  }
+  tushareHealthCache = { ...result, expiresAt: now + ttlMs };
+  return result;
+}
+
+/** Configured AND actually reachable — the signal both /api/data-status and the live backtest route use to decide whether Tushare can be trusted for this request. */
+export async function isTushareAvailable(): Promise<boolean> {
+  return (await checkTushareHealth()).healthy;
+}
+
+export function resetTushareHealthCache(): void {
+  tushareHealthCache = null;
+}
+
 export class TushareMarketDataProvider implements MarketDataProvider {
   readonly name = 'Tushare Pro';
 

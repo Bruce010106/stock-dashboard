@@ -48,7 +48,7 @@ npm run dev
 
 `TUSHARE_TOKEN` 只允许配置在 `.env.local` 或 Vercel 环境变量中，不能使用 `NEXT_PUBLIC_` 前缀。兼容服务可以通过服务端变量 `TUSHARE_API_URL` 指定；留空时使用官方 `https://api.tushare.pro`。未配置 Token 时，实时扫描仍然可以运行，但近 30 日涨停会采用腾讯不复权日线按板块涨停幅度识别；策略回测同样可以直接运行，自动切换到新浪财经免费近似数据源，不需要任何密钥。
 
-登录与云同步需要 `NEXT_PUBLIC_SUPABASE_URL` 和 `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`。Vercel 原生 Supabase 集成会自动配置这些变量；首次初始化数据库时运行 `npm run db:migrate`，迁移记录保存在数据库的私有 schema 中。
+登录与云同步需要 `NEXT_PUBLIC_SUPABASE_URL` 和 `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`。Vercel 原生 Supabase 集成会自动配置这些变量；首次初始化数据库时运行 `npm run db:migrate`，迁移记录保存在数据库的私有 schema 中。云端组合的整组替换（`PUT /api/portfolio/cloud`）通过 `supabase/migrations/20260826000000_portfolio_replace_rpc.sql` 中的 `public.replace_portfolio_state` RPC 函数在单次数据库事务内原子完成；已运行过历史迁移的数据库需要额外执行一次 `npm run db:migrate` 或在 Supabase SQL Editor 中运行该文件以获得此函数。
 
 真实回测单次支持最多 5 只股票。系统先用日线和点时指标完成前五项粗筛，只为候选日期读取分钟线；这适合交互式核验，不替代全市场多年离线回测任务。
 

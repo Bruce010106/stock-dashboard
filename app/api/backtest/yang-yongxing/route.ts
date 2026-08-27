@@ -3,27 +3,36 @@ import {
 } from '../../../../lib/backtest/yang-yongxing-forward';
 import {
   LiveBacktestDataError,
+  providerForTushareHealth,
   runLiveYangYongxingBacktest,
 } from '../../../../lib/backtest/live-yang-yongxing';
 import {
   validateLiveBacktestQuery,
   validateYangYongxingBacktestPayload,
 } from '../../../../lib/api-validation';
-import { isTushareConfigured } from '../../../../lib/data/tushare-provider';
+import { isTushareAvailable } from '../../../../lib/data/tushare-provider';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
 export async function GET(request: Request) {
+  // Health-checked once (short TTL cache), not just "token present" — a
+  // configured-but-bad token must fall back to the 30-day free cap, not be
+  // allowed the 90-day Tushare cap it can't actually serve. The same result
+  // also picks the provider below, so the request never probes Tushare twice.
+  const tushareHealthy = await isTushareAvailable();
   const validated = validateLiveBacktestQuery(new URL(request.url).searchParams, {
-    tushareConfigured: isTushareConfigured(),
+    tushareConfigured: tushareHealthy,
   });
   if (!validated.ok) {
     return Response.json({ error: validated.error }, { status: 400 });
   }
 
   try {
-    const result = await runLiveYangYongxingBacktest(validated.value);
+    const result = await runLiveYangYongxingBacktest(
+      validated.value,
+      providerForTushareHealth(tushareHealthy),
+    );
     return Response.json(result, {
       headers: { 'Cache-Control': 'private, max-age=0, must-revalidate' },
     });

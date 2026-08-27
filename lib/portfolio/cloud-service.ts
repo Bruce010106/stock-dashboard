@@ -1,4 +1,4 @@
-import { getSupabaseServerClient } from '../supabase/server';
+import { getSupabaseServerClient } from '../supabase/server.ts';
 import {
   MAX_HOLDING_COST_PRICE,
   MAX_HOLDING_QUANTITY,
@@ -19,6 +19,8 @@ import type {
   CloudWritePayload,
 } from './cloud-validation.ts';
 import { normalizePortfolioCode } from './validation.ts';
+import { PortfolioCloudError } from './cloud-errors.ts';
+import { callReplacePortfolioStateRpc } from './cloud-replace-rpc.ts';
 
 /**
  * Contract implemented by lib/supabase/server.ts. The concrete Supabase
@@ -39,7 +41,12 @@ type PortfolioSupabaseQueryResult = {
   error: { code?: string; message?: string } | null;
 };
 
-type PortfolioSupabaseClient = {
+type PortfolioSupabaseRpcResult = {
+  data: unknown;
+  error: { code?: string; message?: string } | null;
+};
+
+export type PortfolioSupabaseClient = {
   auth: {
     getUser(): Promise<{
       data: { user: { id: string; email?: string | null } | null };
@@ -47,20 +54,12 @@ type PortfolioSupabaseClient = {
     }>;
   };
   from(table: string): PortfolioSupabaseQuery;
+  rpc(fn: string, args?: Record<string, unknown>): PromiseLike<PortfolioSupabaseRpcResult>;
 };
 
 type SupabaseServerFactory = () => Promise<unknown> | unknown;
 
-export class PortfolioCloudError extends Error {
-  constructor(
-    public readonly status: 400 | 401 | 502 | 503,
-    public readonly code: 'VALIDATION' | 'AUTH_REQUIRED' | 'NOT_CONFIGURED' | 'STORAGE',
-    message: string,
-  ) {
-    super(message);
-    this.name = 'PortfolioCloudError';
-  }
-}
+export { PortfolioCloudError } from './cloud-errors.ts';
 
 export type PortfolioCloudOperation = {
   state: PortfolioState;
@@ -71,8 +70,8 @@ export type PortfolioCloudOperation = {
 function asClient(value: unknown): PortfolioSupabaseClient | null {
   if (!value || typeof value !== 'object') return null;
   const candidate = value as Partial<PortfolioSupabaseClient>;
-  return typeof candidate.from === 'function' && candidate.auth
-    && typeof candidate.auth.getUser === 'function'
+  return typeof candidate.from === 'function' && typeof candidate.rpc === 'function'
+    && candidate.auth && typeof candidate.auth.getUser === 'function'
     ? value as PortfolioSupabaseClient
     : null;
 }
@@ -276,22 +275,15 @@ export async function mergePortfolioCloud(input: unknown): Promise<PortfolioClou
 }
 
 /**
- * PUT is the authenticated browser cache's authoritative save. It removes
- * records absent from the submitted state before upserting the desired rows;
- * this prevents a deleted local record from being resurrected on refresh.
+ * PUT is the authenticated browser cache's authoritative save. It replaces
+ * the user's entire watchlist and holdings in one atomic RPC call so a
+ * mid-way failure can never leave the cloud state partially deleted.
  */
 export async function replacePortfolioCloud(input: unknown): Promise<PortfolioCloudOperation> {
   const parsed = parsePortfolioCloudMergePayload(input);
   if (!parsed.ok) throwValidation(parsed.error);
   const { client, userId, email } = await requireClientAndUser();
-
-  // Full replacement is intentionally scoped by user_id. RLS independently
-  // enforces the same boundary even if a caller tampers with the request.
-  const deleteWatchlist = await client.from('watchlist_items').delete().eq('user_id', userId);
-  assertQuerySucceeded(deleteWatchlist);
-  const deleteHoldings = await client.from('holdings').delete().eq('user_id', userId);
-  assertQuerySucceeded(deleteHoldings);
-  await writeRows(client, userId, parsed.value);
+  await callReplacePortfolioStateRpc(client, parsed.value);
   return { state: await readWithClient(client, userId), userId, email };
 }
 

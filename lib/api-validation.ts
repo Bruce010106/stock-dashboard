@@ -313,6 +313,13 @@ export function validateYangYongxingBacktestPayload(
   return { ok: true, value: { events, holdingTradingDays } };
 }
 
+/** Shared by request validation (day-span cap) and the live-backtest fallback (deciding whether a Tushare failure can still be covered by the free Sina rerun). */
+export function calendarDaySpan(startDate: string, endDate: string): number {
+  const startTime = Date.parse(`${startDate}T00:00:00Z`);
+  const endTime = Date.parse(`${endDate}T00:00:00Z`);
+  return Math.floor((endTime - startTime) / 86_400_000) + 1;
+}
+
 export type LiveBacktestQuery = {
   codes: string[];
   startDate: string;
@@ -321,7 +328,11 @@ export type LiveBacktestQuery = {
 };
 
 export type LiveBacktestQueryOptions = {
-  /** Whether Tushare is configured; determines the allowed date-span cap. */
+  /**
+   * Whether Tushare is usable for this request — configured AND actually
+   * reachable (health-checked), not merely configured — determines the
+   * allowed date-span cap (90 days exact vs. 30 days free).
+   */
   tushareConfigured: boolean;
 };
 
