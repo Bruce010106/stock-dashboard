@@ -1861,6 +1861,8 @@ set(SCREEN_SOURCES
     src/services/ashare/AShareMarketService.cpp
     src/services/ashare/AShareIndicators.cpp
     src/services/ashare/AShareProfileService.cpp
+    src/services/ashare/AShareOverviewService.cpp
+    src/screens/ashare/AShareMarketPanel.cpp
     src/screens/ashare/AShareOrderBook.cpp
     src/screens/ashare/AShareProfilePanel.cpp
     src/screens/ashare/AShareChart.cpp
@@ -2197,6 +2199,8 @@ set_source_files_properties(
     src/services/ashare/AShareMarketService.cpp
     src/services/ashare/AShareIndicators.cpp
     src/services/ashare/AShareProfileService.cpp
+    src/services/ashare/AShareOverviewService.cpp
+    src/screens/ashare/AShareMarketPanel.cpp
     src/screens/ashare/AShareOrderBook.cpp
     src/screens/ashare/AShareProfilePanel.cpp
     src/screens/ashare/AShareChart.cpp

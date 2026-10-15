@@ -16,6 +16,10 @@ add_library(ashare_board STATIC
     ${AS_SRC}/services/ashare/AShareIndicators.h
     ${AS_SRC}/services/ashare/AShareProfileService.cpp
     ${AS_SRC}/services/ashare/AShareProfileService.h
+    ${AS_SRC}/services/ashare/AShareOverviewService.cpp
+    ${AS_SRC}/services/ashare/AShareOverviewService.h
+    ${AS_SRC}/screens/ashare/AShareMarketPanel.cpp
+    ${AS_SRC}/screens/ashare/AShareMarketPanel.h
     ${AS_SRC}/screens/ashare/AShareOrderBook.cpp
     ${AS_SRC}/screens/ashare/AShareOrderBook.h
     ${AS_SRC}/screens/ashare/AShareProfilePanel.cpp

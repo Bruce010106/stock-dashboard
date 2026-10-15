@@ -5,6 +5,9 @@
 #include "services/ashare/AShareResearchService.h"
 #include "core/layout/LayoutTemplates.h"
 #include "screens/ashare/AShareOrderBook.h"
+#include "screens/ashare/AShareMarketPanel.h"
+#include "services/ashare/AShareOverviewService.h"
+#include <QLabel>
 #include "screens/ashare/AShareTheme.h"
 #include "screens/ashare/AShareProfilePanel.h"
 #include "services/ashare/AShareIndicators.h"
@@ -505,6 +508,95 @@ class AShareTests : public QObject {
         QCOMPARE(filter->findData(QStringLiteral("短线")), -1);
         filter->setCurrentIndex(filter->findData(QStringLiteral("持仓")));
         QCOMPARE(restored.findChild<QTableWidget*>("ashareWatchlist")->rowCount(), 2);
+    }
+    // ---- Tier two: market overview ----
+    void market_breadth_parser() {
+        Breadth b; QString error;
+        // Shape of a live push2ex getTopicZDFenBu response (2026-10-15, trimmed).
+        QVERIFY(parse_breadth(R"({"rc":0,"data":{"qdate":20261015,"fenbu":[{"-1":324},{"-11":26},{"-2":672},{"0":26},{"1":149},{"11":36},{"2":81}]}})", b, error));
+        QCOMPARE(b.date, QDate(2026, 10, 15));
+        QCOMPARE(b.up, 149 + 36 + 81); QCOMPARE(b.down, 324 + 26 + 672); QCOMPARE(b.flat, 26);
+        QCOMPARE(b.limit_up, 36); QCOMPARE(b.limit_down, 26);
+        QCOMPARE(b.buckets.first().first, -11); QCOMPARE(b.buckets.last().first, 11); // sorted axis
+        QVERIFY(!parse_breadth(R"({"rc":0,"data":{"fenbu":[]}})", b, error));
+        QVERIFY(!parse_breadth("<html>403</html>", b, error));
+    }
+    void market_sector_and_constituent_parsers() {
+        QVector<Sector> sectors; QString error;
+        QVERIFY(parse_sectors(R"({"code":0,"data":{"rank_list":[{"code":"pt01801125","name":"白酒Ⅱ","zdf":"1.72","zgb":"11/19",
+            "zljlr":"76783.43","turnover":"1574966","lzg":{"code":"sz000995","name":"皇台酒业","zdf":"10.04"}}],"total":124}})", sectors, error));
+        QCOMPARE(sectors.size(), 1);
+        QCOMPARE(sectors[0].up, 11); QCOMPARE(sectors[0].total, 19);
+        QCOMPARE(sectors[0].main_net, 767834300.0); QCOMPARE(sectors[0].turnover, 15749660000.0); // 万元 -> CNY
+        QCOMPARE(sectors[0].leader_code, "sz000995");
+        QVERIFY(!parse_sectors(R"({"code":11,"data":""})", sectors, error));
+        QVector<BoardStock> stocks;
+        QVERIFY(parse_board_stocks(R"({"code":0,"data":{"rank_list":[{"code":"sz000995","name":"皇台酒业","zxj":"13.37","zdf":"10.04","hsl":"14.97","turnover":"34321"},
+            {"code":"hk00700","name":"bad","zxj":"1","zdf":"1","hsl":"1","turnover":"1"}]}})", stocks, error));
+        QCOMPARE(stocks.size(), 1); QCOMPARE(stocks[0].amount, 343210000.0);
+    }
+    void market_limit_pool_and_billboard_parsers() {
+        LimitPool pool; QString error;
+        QVERIFY(parse_limit_pool(R"({"rc":0,"data":{"tc":36,"qdate":20261015,"pool":[{"c":"002815","m":0,"n":"崇达技术","p":23250,"zdp":9.98,
+            "amount":317925520,"hs":1.76,"lbc":2,"fbt":92500,"lbt":100212,"fund":383694750,"zbc":1,"hybk":"元件"}]}})", "zt", pool, error));
+        QCOMPARE(pool.total, 36); QCOMPARE(pool.rows[0].symbol, "sz002815");
+        QCOMPARE(pool.rows[0].price, 23.25); QCOMPARE(pool.rows[0].boards, 2); QCOMPARE(pool.rows[0].breaks, 1);
+        QCOMPARE(pool.rows[0].first_time, "09:25:00"); QCOMPARE(pool.rows[0].last_time, "10:02:12");
+        QVERIFY(parse_limit_pool(R"({"rc":0,"data":{"tc":26,"qdate":20261015,"pool":[{"c":"603344","n":"星德胜","p":19850,"zdp":-9.98,"days":3,"oc":29,"lbt":145435}]}})", "dt", pool, error));
+        QCOMPARE(pool.rows[0].symbol, "sh603344"); QCOMPARE(pool.rows[0].boards, 3); QCOMPARE(pool.rows[0].breaks, 29);
+        QVERIFY(!parse_limit_pool(R"({"rc":102,"data":null})", "zb", pool, error)); QVERIFY(error.contains(QStringLiteral("炸板池")));
+        QVector<BillboardRow> rows;
+        QVERIFY(parse_billboard(R"({"result":{"data":[
+            {"SECURITY_CODE":"002029","SECURITY_NAME_ABBR":"七匹狼","TRADE_DATE":"2026-10-14 00:00:00","CLOSE_PRICE":8.6,"CHANGE_RATE":9.98,"BILLBOARD_NET_AMT":156359488.37,"EXPLANATION":"日涨幅偏离值达到7%"},
+            {"SECURITY_CODE":"002029","SECURITY_NAME_ABBR":"七匹狼","TRADE_DATE":"2026-10-14 00:00:00","CLOSE_PRICE":8.6,"CHANGE_RATE":9.98,"BILLBOARD_NET_AMT":1,"EXPLANATION":"连续三日涨幅偏离20%"},
+            {"SECURITY_CODE":"600000","SECURITY_NAME_ABBR":"旧","TRADE_DATE":"2026-10-13 00:00:00","CHANGE_RATE":1}]}})", rows, error));
+        QCOMPARE(rows.size(), 1); // older day dropped, duplicate stock merged
+        QVERIFY(rows[0].reason.contains(QStringLiteral("连续三日"))); QCOMPARE(rows[0].date, QDate(2026, 10, 14));
+        QVERIFY(!parse_billboard(R"({"result":null})", rows, error));
+    }
+    void market_panel_renders_and_opens_stocks() {
+        fincept::screens::AShareMarketPanel panel; panel.resize(1300, 900); panel.show();
+        auto* service = panel.findChild<AShareOverviewService*>();
+        Breadth b; b.date = QDate(2026, 10, 15); b.up = 417; b.down = 4925; b.flat = 26; b.limit_up = 36; b.limit_down = 26;
+        for (int k = -11; k <= 11; ++k) b.buckets.append({k, 10 + std::abs(k)});
+        service->breadth_ready(b);
+        QVector<Sector> sectors;
+        for (int i = 0; i < 31; ++i) sectors.append({QString("pt0180%1").arg(1100 + i), QString("行业%1").arg(i), "sz000001", "平安银行",
+                                                     i - 15.0, 1.0, 1e8 * (i - 15), 1e10, i, 30});
+        service->sectors_ready("hy", sectors);
+        LimitPool zt; zt.total = 1; zt.rows.append({"sz002815", QStringLiteral("崇达技术"), QStringLiteral("元件"), "09:25:00", "09:25:00", 23.25, 9.98, 3e8, 3e8, 1.7, 2, 0});
+        service->pool_ready("zt", zt);
+        auto d = panel.diagnostics();
+        QCOMPARE(d["breadth_total"].toInt(), 5368); QCOMPARE(d["heat_tiles"].toInt(), 31); QCOMPARE(d["zt"].toInt(), 1);
+        QVERIFY(panel.findChild<QLabel*>("ashareMarketTurnover")->text().startsWith(QStringLiteral("3100.00亿"))); // 31 × 100 亿
+        QVERIFY(!panel.grab().isNull());
+        QStringList opened;
+        connect(&panel, &fincept::screens::AShareMarketPanel::open_stock, this, [&](const QString& s) { opened << s; });
+        auto* table = panel.findChild<QTableWidget*>("ashareZtPool");
+        QCOMPARE(table->rowCount(), 1);
+        table->cellDoubleClicked(0, 0);
+        QCOMPARE(opened, QStringList{"sz002815"});
+        // Sector flow table is ordered by main-force net inflow.
+        auto* flow = panel.findChild<QTableWidget*>("ashareSectorFlow");
+        QCOMPARE(flow->item(0, 0)->text(), QStringLiteral("行业30"));
+        // A late constituents response for another board is ignored.
+        service->board_stocks_ready("ptOTHER", {{"sz000001", "x", 1, 1, 1, 1}});
+        QCOMPARE(panel.diagnostics()["board_stocks"].toInt(), 0);
+    }
+    void screen_market_view_switch_and_open_stock() {
+        QTemporaryDir dir; QSettings::setDefaultFormat(QSettings::IniFormat);
+        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, dir.path());
+        fincept::screens::AShareScreen screen; screen.resize(1320, 940); screen.show();
+        QVERIFY(!screen.market_view());
+        screen.findChild<QPushButton*>("ashareViewMarket")->click();
+        QVERIFY(screen.market_view()); QCOMPARE(screen.save_state()["view"].toString(), "market");
+        auto* panel = screen.findChild<fincept::screens::AShareMarketPanel*>();
+        panel->open_stock("sz002815"); // double-click from a pool table
+        QVERIFY(!screen.market_view());
+        QCOMPARE(screen.save_state()["selected"].toString(), "sz002815");
+        QCOMPARE(screen.findChild<QTableWidget*>("ashareWatchlist")->rowCount(), 5);
+        screen.restore_state({{"selected", "sz002815"}, {"view", "market"}});
+        QVERIFY(screen.market_view());
     }
 };
 QTEST_MAIN(AShareTests)

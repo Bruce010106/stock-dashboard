@@ -14,9 +14,11 @@ class QTimer;
 class QListWidget;
 class QHBoxLayout;
 class QTabWidget;
+class QStackedWidget;
 namespace fincept::screens {
 class AShareChart;
 class AShareOrderBook;
+class AShareMarketPanel;
 class AShareProfilePanel;
 class AShareResearchPanel;
 class AShareScreen : public QWidget, public IStatefulScreen {
@@ -31,12 +33,15 @@ class AShareScreen : public QWidget, public IStatefulScreen {
     void select_daily(bool value);
     void select_period(int index); // index into the chart mode combo; 0 = intraday
     QVariantMap diagnostics() const;
+    void set_market_view(bool market); // 大盘 overview vs single-stock view
+    bool market_view() const;
   signals:
     void data_loaded();
   protected:
     void paintEvent(QPaintEvent*) override;
   private:
     bool intraday() const;
+    void open_stock(const QString& symbol);
     services::ashare::KPeriod current_period() const;
     services::ashare::Adjust current_adjust() const;
     QString analysis_key() const; // intraday mode summarises daily candles
@@ -71,7 +76,7 @@ class AShareScreen : public QWidget, public IStatefulScreen {
     QHBoxLayout* index_cards_;
     QHash<QString, QPushButton*> index_buttons_;
     QString selected_;
-    QTableWidget* table_;
+    QTableWidget* table_ = nullptr;
     QComboBox* group_filter_;
     QPushButton* delete_group_;
     QLineEdit* input_;
@@ -88,5 +93,8 @@ class AShareScreen : public QWidget, public IStatefulScreen {
     AShareResearchPanel* research_;
     AShareProfilePanel* profile_;
     QTimer* timer_;
+    QStackedWidget* stack_ = nullptr;
+    AShareMarketPanel* market_ = nullptr;
+    QPushButton *view_stock_, *view_market_;
 };
 }

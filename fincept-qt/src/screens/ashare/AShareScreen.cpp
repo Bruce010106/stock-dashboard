@@ -1,6 +1,7 @@
 #include "screens/ashare/AShareScreen.h"
 #include "screens/ashare/AShareTheme.h"
 #include "screens/ashare/AShareChart.h"
+#include "screens/ashare/AShareMarketPanel.h"
 #include "screens/ashare/AShareOrderBook.h"
 #include "screens/ashare/AShareProfilePanel.h"
 #include "screens/ashare/AShareResearchPanel.h"
@@ -14,7 +15,9 @@
 #include <QMenu>
 #include <QScrollArea>
 #include <QPushButton>
+#include <QButtonGroup>
 #include <QSettings>
+#include <QStackedWidget>
 #include <QShortcut>
 #include <QSignalBlocker>
 #include <QSplitter>
@@ -85,9 +88,17 @@ AShareScreen::AShareScreen(QWidget* parent) : QWidget(parent), service_(new ASha
     auto* header = new QHBoxLayout(top_bar); header->setContentsMargins(10, 5, 8, 5); header->setSpacing(6);
     auto* heading = new QLabel(QStringLiteral("A股终端")); heading->setObjectName("ashareBrand");
     header->addWidget(heading);
+    // View switch: single stock vs whole-market overview.
+    view_stock_ = new QPushButton(QStringLiteral("个股")); view_stock_->setObjectName("ashareViewStock");
+    view_market_ = new QPushButton(QStringLiteral("大盘")); view_market_->setObjectName("ashareViewMarket");
+    auto* views = new QButtonGroup(this); views->setExclusive(true);
+    for (auto* button : {view_stock_, view_market_}) { button->setCheckable(true); views->addButton(button); header->addWidget(button); }
+    view_stock_->setChecked(true);
+    view_market_->setToolTip(QStringLiteral("市场全景：涨跌分布、涨跌停、板块热力图、龙虎榜（Ctrl+M）"));
+    header->addSpacing(6);
     auto* index_scroll = new QScrollArea; index_scroll->setWidgetResizable(true);
     index_scroll->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    index_scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    index_scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     index_scroll->setFrameShape(QFrame::NoFrame); index_scroll->setFixedHeight(40);
     index_scroll->setStyleSheet("QScrollArea{border:0;background:transparent;}");
     index_scroll->viewport()->setAutoFillBackground(false);
@@ -104,7 +115,9 @@ AShareScreen::AShareScreen(QWidget* parent) : QWidget(parent), service_(new ASha
     auto* remove_index = new QPushButton(QStringLiteral("−")); remove_index->setObjectName("ashareRemoveIndex");
     remove_index->setToolTip(QStringLiteral("移除下拉框所选指数")); remove_index->setFixedWidth(30);
     header->addWidget(add_index); header->addWidget(remove_index);
-    auto* hotkeys = new QLabel(QStringLiteral("Ctrl+K 搜索 · Ctrl+1–8 周期 · F5 刷新"));
+    // Hotkey list lives in a tooltip so the index ticker keeps the horizontal space.
+    auto* hotkeys = new QLabel(QStringLiteral("快捷键"));
+    hotkeys->setToolTip(QStringLiteral("Ctrl+K 搜索股票\nCtrl+M 切换个股 / 大盘\nCtrl+1–8 分时、日、周、月、5/15/30/60 分钟\nF5 立即刷新"));
     hotkeys->setProperty("muted", true); header->addSpacing(8); header->addWidget(hotkeys);
     theme_ = new QComboBox; theme_->setObjectName("ashareTheme");
     theme_->addItem(QStringLiteral("日间"), false); theme_->addItem(QStringLiteral("夜间"), true);
@@ -256,8 +269,19 @@ AShareScreen::AShareScreen(QWidget* parent) : QWidget(parent), service_(new ASha
     body_scroll->setWidgetResizable(true); body_scroll->setFrameShape(QFrame::NoFrame);
     body_scroll->setStyleSheet("QScrollArea{background:transparent;border:0;}");
     body_scroll->viewport()->setAutoFillBackground(false);
-    body_scroll->setWidget(splitter); splitter->setAutoFillBackground(false); root->addWidget(body_scroll, 1);
+    body_scroll->setWidget(splitter); splitter->setAutoFillBackground(false);
+    market_ = new AShareMarketPanel;
+    auto* market_scroll = new QScrollArea; market_scroll->setObjectName("ashareMarketScroll");
+    market_scroll->setWidgetResizable(true); market_scroll->setFrameShape(QFrame::NoFrame);
+    market_scroll->setStyleSheet("QScrollArea{background:transparent;border:0;}");
+    market_scroll->viewport()->setAutoFillBackground(false); market_scroll->setWidget(market_);
+    stack_ = new QStackedWidget; stack_->setObjectName("ashareViews");
+    stack_->addWidget(body_scroll); stack_->addWidget(market_scroll);
+    root->addWidget(stack_, 1);
     status_ = new QLabel(QStringLiteral("正在连接行情源…")); status_->setWordWrap(true); root->addWidget(status_);
+    connect(view_stock_, &QPushButton::clicked, this, [this]() { set_market_view(false); });
+    connect(view_market_, &QPushButton::clicked, this, [this]() { set_market_view(true); });
+    connect(market_, &AShareMarketPanel::open_stock, this, &AShareScreen::open_stock);
 
     // ---- Persisted preferences ----
     QSettings settings(QSettings::defaultFormat(), QSettings::UserScope, "AShareBoard", "Personal");
@@ -412,7 +436,8 @@ AShareScreen::AShareScreen(QWidget* parent) : QWidget(parent), service_(new ASha
         connect(shortcut, &QShortcut::activated, this, handler);
     };
     hotkey(QKeySequence(Qt::CTRL | Qt::Key_K), [this]() { input_->setFocus(Qt::ShortcutFocusReason); input_->selectAll(); });
-    hotkey(QKeySequence(Qt::Key_F5), [this]() { refresh(true); });
+    hotkey(QKeySequence(Qt::Key_F5), [this]() { if (market_view()) market_->refresh(true); else refresh(true); });
+    hotkey(QKeySequence(Qt::CTRL | Qt::Key_M), [this]() { set_market_view(!market_view()); });
     for (int i = 0; i < 8; ++i)
         hotkey(QKeySequence(Qt::CTRL | Qt::Key(Qt::Key_1 + i)), [this, i]() { select_period(i); });
     update_chart_controls();
@@ -429,6 +454,7 @@ void AShareScreen::apply_theme(bool dark) {
     research_->set_dark(dark); profile_->set_dark(dark);
     // Item colours come from the palette, so rebuild the market views for the new theme.
     if (table_) { rebuild_watchlist(); render_selected(); }
+    if (market_) market_->rerender();
     for (auto* widget : findChildren<QWidget*>()) widget->update();
     update();
 }
@@ -556,7 +582,8 @@ void AShareScreen::persist() {
     settings.setValue("chart_oscillator", oscillator_->currentIndex());
 }
 QVariantMap AShareScreen::save_state() const {
-    return {{"selected", selected_}, {"daily", mode_->currentIndex() == 1}, {"period", mode_->currentIndex()}};
+    return {{"selected", selected_}, {"daily", mode_->currentIndex() == 1}, {"period", mode_->currentIndex()},
+            {"view", market_view() ? "market" : "stock"}};
 }
 void AShareScreen::restore_state(const QVariantMap& state) {
     const auto symbol = state.value("selected").toString();
@@ -564,6 +591,26 @@ void AShareScreen::restore_state(const QVariantMap& state) {
     // "period" was added later; older saved layouts only carry the daily flag.
     if (state.contains("period")) select_period(state.value("period").toInt());
     else select_daily(state.value("daily").toBool());
+    set_market_view(state.value("view").toString() == "market");
+}
+bool AShareScreen::market_view() const { return stack_->currentIndex() == 1; }
+void AShareScreen::set_market_view(bool market) {
+    stack_->setCurrentIndex(market ? 1 : 0);
+    view_market_->setChecked(market); view_stock_->setChecked(!market);
+    status_->setVisible(!market); // the market panel shows its own source / freshness line
+    market_->set_active(market);
+}
+void AShareScreen::open_stock(const QString& symbol) {
+    if (normalize_symbol(symbol) != symbol) return;
+    if (!symbols_.contains(symbol)) {
+        if (symbols_.size() >= 30) {
+            set_market_view(false);
+            status_->setText(QStringLiteral("自选已满 30 只，未加入 %1；请先移除一只再从大盘打开").arg(symbol.toUpper()));
+            return;
+        }
+        symbols_.append(symbol);
+    }
+    set_market_view(false); rebuild_watchlist(); select_symbol(symbol); persist();
 }
 void AShareScreen::select_daily(bool value) { mode_->setCurrentIndex(value ? 1 : 0); }
 void AShareScreen::select_period(int index) { mode_->setCurrentIndex(std::clamp(index, 0, mode_->count() - 1)); }

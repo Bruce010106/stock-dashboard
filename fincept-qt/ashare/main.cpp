@@ -11,8 +11,11 @@
 #include <QScreen>
 #include "services/ashare/AShareResearchService.h"
 #include "services/ashare/AShareProfileService.h"
+#include "screens/ashare/AShareMarketPanel.h"
+#include <QMouseEvent>
 #include <QTabWidget>
 #include <functional>
+#include <memory>
 
 int main(int argc, char** argv) {
     QApplication app(argc, argv);
@@ -29,8 +32,10 @@ int main(int argc, char** argv) {
     const auto args = app.arguments();
     const bool research_smoke = args.contains("--research-smoke-output");
     const bool feature_smoke = args.contains("--feature-smoke-output");
+    const bool market_smoke = args.contains("--market-smoke-output");
     const int capture_index = args.indexOf(research_smoke ? "--research-smoke-output"
-                                           : feature_smoke ? "--feature-smoke-output" : "--smoke-output");
+                                           : feature_smoke ? "--feature-smoke-output"
+                                           : market_smoke ? "--market-smoke-output" : "--smoke-output");
     const QString output = capture_index >= 0 ? args.value(capture_index + 1) : QString();
     if (!output.isEmpty()) {
         QDir().mkpath(output);
@@ -173,7 +178,49 @@ int main(int argc, char** argv) {
         poll->start();
         QTimer::singleShot(240000, &app, [&]() { app.exit(3); });
     }
-    if (!output.isEmpty() && !research_smoke && !feature_smoke) {
+    // Live market-overview walk-through: breadth, sectors + constituents, limit pools, billboard, both themes.
+    if (!output.isEmpty() && market_smoke) {
+        auto* panel = screen.findChild<fincept::screens::AShareMarketPanel*>();
+        auto* heat = screen.findChild<fincept::screens::AShareHeatmap*>();
+        screen.set_market_view(true);
+        auto* poll = new QTimer(&app); poll->setInterval(400);
+        auto started = std::make_shared<QDateTime>(QDateTime::currentDateTimeUtc()); // outlives this block
+        auto step = std::make_shared<int>(0);
+        auto result = std::make_shared<QJsonObject>();
+        QObject::connect(poll, &QTimer::timeout, &app, [&, poll, step, result, panel, heat, started]() {
+            const auto d = panel->diagnostics();
+            const auto elapsed = started->secsTo(QDateTime::currentDateTimeUtc());
+            const bool settled = (d["breadth_total"].toInt() > 0 || !d["errors"].toStringList().isEmpty()) &&
+                                 d["heat_tiles"].toInt() > 0 && d["hy_sectors"].toInt() > 0;
+            if (*step == 0 && ((settled && d["billboard"].toInt() + d["errors"].toStringList().size() > 0 && elapsed > 4) || elapsed > 40)) {
+                // Click the strongest tile, then wait for its constituents.
+                const QPointF at(12, 12);
+                QMouseEvent press(QEvent::MouseButtonPress, at, heat->mapToGlobal(at), Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+                QCoreApplication::sendEvent(heat, &press);
+                *step = 1; *started = QDateTime::currentDateTimeUtc();
+            } else if (*step == 1 && (d["board_stocks"].toInt() > 0 || elapsed > 20)) {
+                screen.grab().save(output + "/market-dark.png");
+                (*result)["dark"] = QJsonObject::fromVariantMap(d);
+                screen.findChild<QComboBox*>("ashareTheme")->setCurrentIndex(0);
+                *step = 2; *started = QDateTime::currentDateTimeUtc();
+            } else if (*step == 2 && elapsed >= 1) {
+                screen.grab().save(output + "/market-light.png");
+                poll->stop();
+                const auto dark = (*result)["dark"].toObject();
+                const QJsonObject checks{{"breadth", dark["breadth_total"].toInt() > 1000}, {"heatmap", dark["heat_tiles"].toInt() >= 20},
+                                         {"constituents", dark["board_stocks"].toInt() > 0}, {"limit_up_pool", dark["zt"].toInt() > 0},
+                                         {"billboard", dark["billboard"].toInt() > 0}};
+                bool ok = true; for (const auto& v : checks) ok = ok && v.toBool();
+                (*result)["checks"] = checks; (*result)["ok"] = ok;
+                QFile file(output + "/market-smoke.json"); file.open(QIODevice::WriteOnly);
+                file.write(QJsonDocument(*result).toJson()); file.close();
+                app.exit(ok ? 0 : 5);
+            }
+        });
+        poll->start();
+        QTimer::singleShot(120000, &app, [&]() { screen.grab().save(output + "/market-timeout.png"); app.exit(3); });
+    }
+    if (!output.isEmpty() && !research_smoke && !feature_smoke && !market_smoke) {
         QObject::connect(&screen, &fincept::screens::AShareScreen::data_loaded, &app, [&]() {
             if (captured || !screen.has_quote() || !screen.has_daily()) return;
             captured = true;
