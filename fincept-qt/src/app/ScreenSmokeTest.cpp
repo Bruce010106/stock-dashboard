@@ -7,6 +7,9 @@
 #include <QCoreApplication>
 #include <QElapsedTimer>
 #include <QEventLoop>
+#include <QDir>
+#include <QWidget>
+#include <QPixmap>
 #include <QString>
 #include <QStringList>
 
@@ -83,7 +86,15 @@ int run_screen_smoke_test(DockScreenRouter* router) {
         return 3;
     }
 
-    const QStringList ids = router->all_screen_ids();
+    const auto registered = router->all_screen_ids();
+    const auto requested = qEnvironmentVariable("FINCEPT_SMOKE_SCREENS").split(',', Qt::SkipEmptyParts);
+    const QStringList ids = requested.isEmpty() ? registered : requested;
+    for (const auto& id : ids) {
+        if (!registered.contains(id)) {
+            LOG_ERROR("Smoke", QString("Unknown screen requested: %1").arg(id));
+            return 2;
+        }
+    }
     std::fprintf(stderr, "[Smoke] walking %d screens\n", static_cast<int>(ids.size()));
     std::fflush(stderr);
     LOG_INFO("Smoke", QString("Screen smoke test: %1 screens").arg(ids.size()));
@@ -113,6 +124,12 @@ int run_screen_smoke_test(DockScreenRouter* router) {
 
         // Let showEvent-driven child construction run before moving on.
         spin(kSettleMs);
+        const auto output = qEnvironmentVariable("FINCEPT_SMOKE_OUTPUT");
+        if (!output.isEmpty()) {
+            QDir().mkpath(output);
+            if (!router->screen_widget(id)->grab().save(QDir(output).filePath(id + ".png")))
+                failures << id;
+        }
 
         // Surface slow screens without failing them — a screen that needs seconds
         // to build is a real finding, just not this test's verdict to make.

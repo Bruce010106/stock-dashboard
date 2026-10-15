@@ -434,6 +434,7 @@ QMenu* ToolBar::build_navigate_menu() {
     nav(mkt, tr("GOVT Data"), "gov_data");
     nav(mkt, tr("DBnomics"), "dbnomics");
     nav(mkt, tr("AKShare Data"), "akshare");
+    nav(mkt, tr("A 股工作台"), "ashare");
     nav(mkt, tr("Asia Markets"), "asia_markets");
     nav(mkt, tr("Relationship Map"), "relationship_map");
 

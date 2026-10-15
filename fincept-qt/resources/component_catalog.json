@@ -1,6 +1,7 @@
 {
   "version": 1,
   "components": [
+    { "id": "ashare", "title": "A 股工作台", "category": "Core", "description": "沪深京自选行情、当天分时、指数与日 K、资讯研报", "tags": ["A股","自选","分时","指数","沪深京","ashare","china"] },
     { "id": "dashboard",         "title": "Dashboard",          "category": "Core",        "description": "Customizable widget grid — quotes, charts, news, notes", "tags": ["grid","widgets","home"] },
     { "id": "markets",           "title": "Markets",            "category": "Core",        "description": "Cross-asset market overview and movers",                   "tags": ["markets","overview","movers"] },
     { "id": "watchlist",         "title": "Watchlist",          "category": "Core",        "description": "Symbol lists with live quotes",                             "tags": ["watchlist","quotes","symbols"] },

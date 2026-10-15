@@ -1092,24 +1092,24 @@ WindowFrame::WindowFrame(int window_id, QWidget* parent, const WindowId& adopted
         // Recovery / "Continue from last session" path: WorkspaceShell::apply
         // spawns this frame with a non-null adopted_uuid and will call
         // apply_layout(fl) immediately after construction returns. Skip the
-        // default dashboard navigate so we don't (a) leave a stray dashboard
+        // default A-share navigate so we don't (a) leave a stray A-share
         // dock widget for ADS restoreState to flag-as-unassigned, and
-        // (b) pay the cost of constructing DashboardScreen just to discard it.
+        // (b) pay the cost of constructing AShareScreen just to discard it.
         // If apply_layout subsequently fails, the caller is responsible for
         // falling back to a default screen.
         if (!dock_restored && adopted_uuid.is_null()) {
             // Defer navigation so the window can paint its chrome (toolbar,
             // tab bar, status bar) before the first screen factory runs.
-            // DashboardScreen construction can take 200-500ms; without this
+            // Screen construction can delay the first paint; without this
             // the user sees a blank frame for that entire duration.
             // Skip it when something has already been opened in the meantime —
             // e.g. a panel torn off / moved into this brand-new window — so the
-            // user doesn't get an unrequested Dashboard tiled next to it.
+            // user doesn't get an unrequested A-share panel tiled next to it.
             QTimer::singleShot(0, this, [this]() {
                 if (dock_router_->current_screen_id().isEmpty())
-                    dock_router_->navigate("dashboard");
+                    dock_router_->navigate("ashare");
             });
-            LOG_INFO("WindowFrame", "Deferred default dashboard navigate to after first paint");
+            LOG_INFO("WindowFrame", "Deferred default A-share navigate to after first paint");
         } else if (!dock_restored) {
             LOG_INFO("WindowFrame", QString("Deferring default navigate — frame spawned with adopted uuid %1 "
                                             "(apply_layout will populate)")

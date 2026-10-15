@@ -256,7 +256,7 @@ void WindowFrame::leave_pricing() {
         // Never land on an empty dock (first run with nothing restored).
         if (dock_router_ && dock_router_->current_screen_id().isEmpty() && dock_manager_ &&
             dock_manager_->openedDockAreas().isEmpty())
-            dock_router_->navigate("dashboard");
+            dock_router_->navigate("ashare");
     }
     update_window_title();
 }
@@ -276,13 +276,13 @@ void WindowFrame::enter_terminal_after_auth() {
         // the saved one would discard everything opened since it was saved.
         const int restored = layout::WorkspaceShell::load_last_or_default();
         if (restored == 0) {
-            // First run / fresh profile: open the Dashboard. Deferred because
+            // First run / fresh profile: open the A-share workbench. Deferred because
             // DockScreenRouter refuses to navigate until the process-wide lock
             // flag drops at the end of on_terminal_unlocked().
             QTimer::singleShot(0, this, [this]() {
                 if (dock_router_ && dock_router_->current_screen_id().isEmpty() && dock_manager_ &&
                     dock_manager_->openedDockAreas().isEmpty())
-                    dock_router_->navigate("dashboard");
+                    dock_router_->navigate("ashare");
             });
         }
         // Warm the instrument cache in the background — only loaded if not

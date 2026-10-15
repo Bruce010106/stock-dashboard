@@ -23,6 +23,7 @@
 #include "screens/ai_chat/AiChatScreen.h"
 #include "screens/ai_quant_lab/AIQuantLabScreen.h"
 #include "screens/akshare/AkShareScreen.h"
+#include "screens/ashare/AShareScreen.h"
 #include "screens/algo_trading/AlgoTradingScreen.h"
 #include "screens/alpha_arena/AlphaArenaScreen.h"
 #include "screens/alt_investments/AltInvestmentsScreen.h"
@@ -249,6 +250,7 @@ void WindowFrame::setup_dock_screens() {
     dock_router_->register_factory("gov_data", []() { return new screens::GovDataScreen; });
     dock_router_->register_factory("dbnomics", []() { return new screens::DBnomicsScreen; });
     dock_router_->register_factory("akshare", []() { return new screens::AkShareScreen; });
+    dock_router_->register_factory("ashare", []() { return new screens::AShareScreen; });
     dock_router_->register_factory("asia_markets", []() { return new screens::AsiaMarketsScreen; });
     dock_router_->register_factory("relationship_map", []() { return new screens::RelationshipMapScreen; });
     dock_router_->register_factory("equity_trading", []() { return new screens::EquityTradingScreen; });

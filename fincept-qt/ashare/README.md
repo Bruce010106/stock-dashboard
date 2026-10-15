@@ -1,0 +1,185 @@
+# A 股观察台（个人自用二开）
+
+基于 FinceptTerminal 的 Qt 桌面项目增加的 A 股看板。上游基线：
+`cfd007a8439d74f2ab2675d80cc4cd0fba4ba21d`。
+
+源码仍位于原项目的 `src/screens/ashare` 和 `src/services/ashare`。
+原终端中通过 Markets 菜单的「A 股工作台」、组件目录或命令栏 `ashare` 打开。
+Launchpad 增加「A 股工作台」模板；新会话没有已有布局时默认打开 A 股。
+布局恢复沿用原版机制，保存所选证券和图表周期（旧布局中的分时／日 K 标记仍可恢复）；自选列表和日夜主题沿用原有本地设置。
+本目录另提供独立桌面启动目标，使用**同一套 C++ 看板代码**，便于在不编译其余终端模块时运行和验证。
+独立入口不是上游完整终端，未包含其其他研究、交易、AI 模块。
+
+## 首版功能
+
+- 界面为专业暗色终端风格（2026-10-15 改版，规范见 `docs/TERMINAL_DESIGN.md`）：默认夜间，可切换日间并保存；图表、盘口、表格随主题切换，行情数字为等宽字体。切换主题不改变当前自选、周期和数据。
+- 快捷键：Ctrl+K 聚焦股票搜索，Ctrl+1–8 切换分时 / 日 / 周 / 月 / 5 / 15 / 30 / 60 分钟，F5 立即刷新。
+
+- 沪深京 A 股代码添加、名称/拼音首字母搜索、删除、自选股本地持久化（最多 30 只）。
+- 股价、涨跌幅、当日开高低、成交额、行情时间，红涨绿跌。
+- 当天分时价格、成交均价、分钟成交量，午休时间轴压缩。
+- 多周期 K 线：日 K、周 K、月 K（前复权 / 不复权可切换），5 / 15 / 30 / 60 分钟 K（数据源仅提供不复权）。
+- 主图指标：MA5/10/20/60 或 BOLL(20,2)；副图指标：MACD(12,26,9)、KDJ(9,3,3)、RSI14，可关闭；成交量叠加 MAVOL5/10。鼠标十字线，滚轮缩放。
+- 交易时间每 15 秒请求自选行情，所选周期 K 线最多每 60 秒自动请求一次；支持暂停和手动刷新。
+- 网络失败保留旧数据并提示；返回非今日行情时显示交易日期，不伪装成当天实时行情。
+- a-stock-data 适配：个股研报、个股关键词新闻、华尔街见闻 A 股频道快讯，标题可打开原文。
+- 自选表扩展列：量比、换手率、振幅、成交额、总市值、PE(TTM)、PB。点击表头排序（降序 → 升序 → 原顺序），无数据排在最后；右键表头选择显示列。
+- 自选分组：默认「持仓 / 观察 / 短线」，可新建（最多 10 个）或删除；右键行移入或移出分组；在某分组下添加股票会直接归入该组。分组、列显示和图表偏好均本地保存。
+- 五档盘口：买卖五档价格与挂单量（手）、委比、外盘 / 内盘；涨停 / 跌停价显示在行情明细行。
+- 分笔成交：东方财富公开接口，最近 40 条，标注主动买 B / 主动卖 S。
+- 个股资料（F10）：公司概况、所属板块 / 概念、主营构成（按产品 / 地区）、近 8 期主要财务指标、十大股东、股东户数。仅在打开该页签时请求。
+- 顶部指数自选卡片：默认上证指数、深证成指、创业板指；支持通过下拉框添加和移除，点击卡片切换分时/日 K，自动保存。
+
+指数目录包括上证指数、深证成指、创业板指、沪深300、上证50、中证500、中证1000、科创50、中小100。
+顶部卡片展示点位、涨跌幅，旧行情及刷新失败会标记；指数与个股自选分别保存。
+指数使用 `day` 原始点位序列，不适用个股前复权，也不将成交额/成交量伪造为指数均价。
+选中指数时隐藏个股资讯、五档盘口和个股资料。顶部“移除指数”作用于下拉框当前选项，点击卡片会同步此选项。
+
+当前为行情与技术指标展示，不含 AI 文字诊断、交易下单或提醒推送。指标数值仅为计算结果，不构成投资建议。
+
+## 行情来源与口径
+
+使用腾讯公开行情接口：`appstock/app/minute/query` 和 `appstock/app/fqkline/get`。
+接口不是有 SLA 的授权商业行情源，可能限流、变更或延迟。每 15 秒请求不等于数据每 15 秒更新。
+服务类独立于界面，后续可以加入 AKShare / Tushare 等适配器。
+
+- 快照成交量多数板块为手、科创板（688/689）为股；程序用成交额 / (成交量 × 现价) 校验单位后统一换算为股。
+  分时累计成交量使用同一单位。2026-10-15 前的版本对科创板一律按手乘 100，导致科创板分时均价约为实际的 1/100，已修正。
+- 分时第三列是累计成交量，换算为股后取差得到分钟成交量。
+- 分时第四列是累计成交额（元）；均价 = 累计成交额 / 累计成交股数。没有金额时不伪造均价。
+- 分时曲线画数据源实际返回的分钟点，最新价单独展示，不捏造缺失分钟。
+- 日 K 使用源返回的 `qfqday`；不拼接未复权快照，也不静默切换复权口径。
+- 日 K 成交量统一为股：科创板 688/689 使用源值，其余股票由手乘 100。分时与快照维持各自单位转换。
+- 周 / 月 K 使用 `qfqweek` / `qfqmonth`（前复权）或 `week` / `month`（不复权）；分钟 K 使用 `kline/mkline` 的 `m5`～`m60`，最多 320 根，为不复权。
+- 腾讯对部分无除权记录的股票（如 2026-10-15 实测 688981）只返回 `day` 而不返回 `qfqday`。程序不会把它冒充为前复权，会提示切换「不复权」查看。
+- 未提供后复权：实测腾讯后复权序列最新一根（盘中实时行）使用的复权因子与历史行不一致。
+- 指标均以当前下载窗口计算：MA 为简单平均；EMA 以首个收盘价起算（与通达信 / 同花顺做法一致）；MACD 前 25 根、各 MA 不足窗口时显示 —。
+  BOLL 标准差使用样本标准差（n-1）。KDJ 的 K、D 初值为 50。RSI14 使用 Wilder 平滑。由于历史窗口不同，数值可能与其他软件存在小差异。
+- 五档挂单量各板块均为手（已与新浪逐档股数核对）；科创板挂单不足 1 手时显示「<1」。
+- 上午及下午自动刷新按北京时间判断；节假日由返回日期提示，尚无完整交易日历，因此工作日节假日仍可能发起请求。
+- 午休、收盘、停牌、盘前无数据均不会填充模拟行情。数据源不返回分时或前复权数据时显示不可用。
+
+## 盘口与个股资料来源
+
+| 能力 | 接口 | 说明 |
+| --- | --- | --- |
+| 五档、外盘 / 内盘、量比、换手、市值、PE、PB、涨跌停 | 腾讯 `minute/query` 同一快照的扩展字段 | 与价格同次刷新，无额外请求 |
+| 分笔成交 | 东方财富 `push2.eastmoney.com/api/qt/stock/details/get` | 约 3 秒聚合的快照，**不是交易所逐笔**；成交量各板块均为手（已与腾讯分钟增量核对） |
+| 个股资料 | 东方财富 F10 `emweb.securities.eastmoney.com/PC_HSF10/…` 五个页面接口 | 串行请求、间隔 0.4 秒，缓存 30 分钟，强制刷新每分钟最多一次；单项失败不影响其他项，并在页内列出 |
+
+分笔仅为当前选中个股请求，随行情每 15 秒刷新；失败时保留上次数据并提示。
+以上接口均为公开网页接口，无 SLA，可能限流、改版或缺字段（例如银行股无毛利率）。这些适配为本项目自行编写，不来自 a-stock-data。
+
+## a-stock-data 接入范围
+
+参考 [simonlin1212/a-stock-data](https://github.com/simonlin1212/a-stock-data) v3.10.2，
+将部分 Python 示例改写为原生 Qt 适配器，运行时不需要 Python 或 API Key。
+完整来源、固定版本与 Apache-2.0 许可见 [THIRD_PARTY.md](THIRD_PARTY.md)。
+
+| 能力 | 当前接入 |
+| --- | --- |
+| 个股研报 | 东方财富，最多 20 条，包含日期、机构、评级及原文链接 |
+| 个股新闻 | 东方财富关键词搜索，最多 20 条；可能含相关市场新闻，不保证每条只涉及该股票 |
+| A 股快讯 | 华尔街见闻 A 股频道，最多 20 条，全市场范围 |
+| 行情备用入口 | 腾讯三个同源网关，网络或解析失败后依次尝试，单次超时 12 秒 |
+
+图表下方选择资讯类型按需加载；切换自选会加载对应股票，快讯保持全市场口径。
+资讯请求串行执行，间隔至少 2 秒；同一接口/股票每分钟最多刷新一次，成功结果缓存 60 秒。
+资讯与行情分别刷新，不会每 15 秒批量请求全部新闻。每条展示发布时间，并标注数据获取时间。
+接口缺字段、限流或网络失败明确显示错误；不会当作“没有相关新闻”。
+2026-10-13 初测个股新闻出现仅 `passportWeb` 的异常响应，已覆盖此异常处理；
+修正原生请求的 JSON 查询参数编码后，最终桌面联网验证新闻、研报、快讯各返回 20 条。
+该项目其余财务、宏观、资金流等接口尚未接入。腾讯多网关不等于多个独立行情供应商。
+
+扩展功能联网冒烟验证（隔离设置，夜间主题下依次截图分时 + 五档 + 分笔、周 K + MACD、15 分钟 K + KDJ、日 K + BOLL + RSI、个股资料、科创板分时，最后截日间主题，输出 `feature-smoke.json`）：
+
+```powershell
+./ashare-dist/AShareBoard.exe -platform offscreen --feature-smoke-output ./ashare-build/feature-verified
+```
+
+全部检查通过时退出码为 0，有检查未通过为 5，超过 4 分钟未完成为 3。科创板检查要求分时均价与现价之比在 0.9～1.1 之间。
+
+联网资讯冒烟验证（隔离自选设置，输出各面板截图与 JSON 结果）：
+
+```powershell
+./ashare-dist/AShareBoard.exe -platform offscreen --research-smoke-output ./ashare-build/research-verified
+```
+
+## Windows 构建
+
+独立目标需要 Qt 6.8+ Widgets / Network / Test、C++20 编译器、CMake 3.27+ 和 Ninja。
+已使用 Qt 6.8.3 + MinGW 13.1 的便携工具链进行本地构建；完整上游的 MSVC 构建要求见 `docs/GETTING_STARTED.md`。
+
+工具链可安装在仓库 `.tools`（不入 Git）：
+
+```powershell
+python -m venv .tools/venv
+./.tools/venv/Scripts/python.exe -m pip install aqtinstall cmake==3.27.7 ninja==1.11.1.1
+./.tools/venv/Scripts/python.exe -m aqt install-qt windows desktop 6.8.3 win64_mingw --archives qtbase -O .tools/Qt
+./.tools/venv/Scripts/python.exe -m aqt install-tool windows desktop tools_mingw1310 -O .tools/Qt
+./fincept-qt/ashare/build.ps1 -Package
+./ashare-dist/AShareBoard.exe
+```
+
+`build.ps1` 也支持传入 `-QtPrefix` 和 `-CompilerBin`。便携构建目录为 `ashare-build/native`，运行目录为 `ashare-dist`。
+中文源码目录会使用 `%LOCALAPPDATA%/AShareBoardSource` 目录联接构建（源码不移动）。
+若当前环境无法经由该目录联接写入（2026-10-15 在 Claude 桌面端会话中出现，`%LOCALAPPDATA%` 写入被重定向），
+可临时映射一个 ASCII 盘符后直接运行同一脚本，完成后取消映射：
+
+```powershell
+subst Q: "D:\USYD\工作\诺亚\fincept-ashare"
+powershell -File Q:\fincept-qt\ashare\build.ps1 -Package
+subst Q: /d
+```
+
+在 Windows PowerShell 5.1 中请勿把 `build.ps1 -Package` 的输出管道到其他命令：windeployqt 的警告写入 stderr，
+在脚本 `$ErrorActionPreference = 'Stop'` 下会被当作错误中止。直接运行或用 `powershell -File` 运行即可。
+
+### 完整工作台源码构建
+
+`build-workbench.ps1` 编译上游完整 `FinceptTerminal` 目标，和独立目标分别使用
+`ashare-build/workbench`、`ashare-build/native`，不会自动覆盖已安装程序。
+完整目标还需 Qt Charts、Multimedia、WebSockets、LinguistTools 及匹配 MinGW 的 OpenSSL 开发包。
+脚本接受 `-QtPrefix`、`-CompilerBin`、`-OpenSSLRoot`，默认单任务编译以限制内存占用。
+无 WebEngine 时使用上游原有降级路径；Python 分析、账号、付费服务和交易连接仍按上游要求配置，
+A 股看板接入并不代表其他模块的数据源已全部适配 A 股。
+
+```powershell
+./fincept-qt/ashare/build-workbench.ps1
+# 完整终端构造检查，可按模块缩小范围；沿用上游 PIN 锁定检查。
+$env:FINCEPT_SMOKE_SCREENS = 'ashare,notes'
+$env:FINCEPT_SMOKE_OUTPUT = "$PWD/ashare-build/workbench-smoke"
+./ashare-build/workbench/FinceptTerminal.exe --profile ashare-validation --smoke-test -platform offscreen
+```
+本机同时准备了 `%LOCALAPPDATA%/AShareBoardToolchain/mingw1310_64` 编译工具，脚本会优先使用它。
+脚本传入 `-no-canonical-prefixes`，避免 MinGW 将英文目录联接还原为不能链接的中文路径。
+本机个人自选存储在 Windows 用户配置 `AShareBoard/Personal`，不向上游账号同步。
+
+## 验证
+
+`AShareTests` 覆盖代码识别、交易时段、分时排序和单位换算、跨交易日隔离、前复权约束、空数据与横盘绘图，
+以及扩展快照字段与科创板单位、多周期与复权口径、分笔解析、指标参考值、F10 解析与 HTML 转义、
+副图绘制、盘口计数（含分笔先于行情到达）、周期状态恢复、自选排序 / 列显示 / 分组持久化。
+
+2026-10-15 验证记录：29 项通过，2 项联网用例按设计跳过；交易时段内对打包后的 `ashare-dist/AShareBoard.exe` 运行扩展功能联网冒烟，
+各项检查通过（分笔 40 条、周 K 320 根、15 分钟 K 320 根、日 K 401 根、F10 财务 9 期）。
+真实网络烟雾测试（请从含 Qt 运行库的环境启动）：
+
+```powershell
+./ashare-dist/AShareBoard.exe -platform offscreen --smoke-output ./ashare-build/live-check
+```
+
+成功会生成 `smoke.json`、`intraday.png` 和 `daily.png`；30 秒无完整行情返回则退出码为 3。
+烟雾测试使用独立设置目录，不覆盖个人自选。
+
+## 上游与许可
+
+上游：https://github.com/Fincept-Corporation/FinceptTerminal
+
+保留上游 LICENSE 和版权声明。本分支用于个人自用；并非 Fincept 官方产品。
+上游 LICENSE 含 AGPL 标记及附加条款，对外发布、公司使用或分发前应另行核对授权。
+本地运行包用于个人验证，不能据此视为已完成第三方软件分发合规审查。
+
+## 名称搜索
+
+自选输入框支持名称片段（例如“茅台”“平安”）、拼音首字母（例如 `gzmt`）和代码。输入后停顿 350 毫秒查询腾讯候选接口，点击候选直接加入自选；候选显示股票名称和交易所代码，过滤非 A 股。完整六位代码仍可直接添加。候选由公开接口返回，可能不完整，找不到时可补全名称或直接输入代码；断网时保留代码添加能力。

@@ -278,6 +278,8 @@ void CommandBar::build_commands() {
          {"dbn", "dbnomics", "database"},
          "",
          {"dbnomics", "database", "economic"}},
+        {"ashare", tr("A 股工作台"), "A-share watchlist, intraday and daily charts",
+         {"ashare", "a股", "自选", "分时"}, "", {"china", "ashare", "intraday"}},
         {"akshare",
          tr("AKShare Data"),
          "Chinese financial data",

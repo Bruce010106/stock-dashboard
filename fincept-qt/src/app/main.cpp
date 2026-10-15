@@ -931,7 +931,7 @@ int main(int argc, char* argv[]) {
             auto r_family = repo.get("appearance.font_family");
             auto r_size = repo.get("appearance.font_size");
             auto r_density = repo.get("appearance.density");
-            QString family = r_family.is_ok() ? r_family.value() : "Consolas";
+            QString family = r_family.is_ok() ? r_family.value() : "Segoe UI,Microsoft YaHei UI";
             QString size_s = r_size.is_ok() ? r_size.value() : "14px";
             int size_px = size_s.left(size_s.indexOf("px")).toInt();
             if (size_px <= 0)

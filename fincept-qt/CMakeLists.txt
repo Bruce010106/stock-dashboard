@@ -8,7 +8,7 @@ cmake_minimum_required(VERSION 3.27)
 # app.rc is a trivial ICON declaration with no macros or #includes, so we
 # bypass the wrapper and use rc.exe directly. Tracked as CMake issue #20198.
 # Must run before project() so CMAKE_RC_COMPILER is set before RC language init.
-if(WIN32 AND CMAKE_HOST_WIN32)
+if(WIN32 AND CMAKE_HOST_WIN32 AND NOT CMAKE_CXX_COMPILER MATCHES "g\\+\\+")
     # Heuristic: if CC/CXX env vars point to clang-cl, or the generator is likely
     # to pick up clang-cl from PATH, force MSVC rc.exe. Harmless on pure MSVC too.
     #
@@ -36,7 +36,7 @@ endif()
 project(FinceptTerminal VERSION 4.5.1 LANGUAGES C CXX)
 
 # Strip C/C++ flags out of RC invocations — rc.exe only understands /D, /I, /fo.
-if(WIN32)
+if(WIN32 AND MSVC)
     set(CMAKE_RC_FLAGS "/nologo" CACHE STRING "" FORCE)
     set(CMAKE_RC_FLAGS_RELEASE "" CACHE STRING "" FORCE)
     set(CMAKE_RC_FLAGS_DEBUG "" CACHE STRING "" FORCE)
@@ -1051,6 +1051,7 @@ set(PYTHON_SOURCES
 # LLM service — provider-neutral chat / streaming / tools layer
 set(LLM_SERVICE_SOURCES
     src/services/llm/LlmService.cpp
+    src/services/llm/LlmRequestPolicy.cpp
     src/services/llm/LlmContentExtractors.cpp
     src/services/llm/LlmHttpHelpers.cpp
     src/services/llm/LlmRequestBuilders.cpp
@@ -1854,6 +1855,17 @@ set(SCREEN_SOURCES
     # AkShare Data Explorer
     src/screens/akshare/AkShareScreen.cpp
 
+    # Personal A-share dashboard (also built by ashare/CMakeLists.txt)
+    src/services/ashare/AShareResearchService.cpp
+    src/screens/ashare/AShareResearchPanel.cpp
+    src/services/ashare/AShareMarketService.cpp
+    src/services/ashare/AShareIndicators.cpp
+    src/services/ashare/AShareProfileService.cpp
+    src/screens/ashare/AShareOrderBook.cpp
+    src/screens/ashare/AShareProfilePanel.cpp
+    src/screens/ashare/AShareChart.cpp
+    src/screens/ashare/AShareScreen.cpp
+
     # Asia Markets
     src/screens/asia_markets/AsiaMarketsScreen.cpp
 
@@ -2180,6 +2192,15 @@ set_source_files_properties(
     src/screens/ai_quant_lab/QuantModulePanel_Misc.cpp
     src/screens/ai_quant_lab/QuantModulePanel_HFT.cpp
     src/screens/ai_quant_lab/QuantModulePanel_LiveLearning.cpp
+    src/services/ashare/AShareResearchService.cpp
+    src/screens/ashare/AShareResearchPanel.cpp
+    src/services/ashare/AShareMarketService.cpp
+    src/services/ashare/AShareIndicators.cpp
+    src/services/ashare/AShareProfileService.cpp
+    src/screens/ashare/AShareOrderBook.cpp
+    src/screens/ashare/AShareProfilePanel.cpp
+    src/screens/ashare/AShareChart.cpp
+    src/screens/ashare/AShareScreen.cpp
     src/screens/akshare/AkShareScreen.cpp
     src/screens/algo_trading/AlgoTradingScreen.cpp
     src/screens/algo_trading/DeploymentDashboard.cpp
@@ -3333,7 +3354,7 @@ endif()
 # src/core/crash/CrashHandler.cpp); crypt32 for the DPAPI
 # CryptProtectData/CryptUnprotectData pair that wraps the SecureStorage DEK.
 if(WIN32)
-    target_link_libraries(FinceptTerminal PRIVATE dbghelp crypt32)
+    target_link_libraries(FinceptTerminal PRIVATE dbghelp crypt32 iphlpapi)
 endif()
 
 # Copy OpenSSL DLLs to build output — Windows only
@@ -3342,7 +3363,7 @@ if(WIN32)
     get_target_property(OPENSSL_SSL_DLL    OpenSSL::SSL    IMPORTED_LOCATION)
 
     # IMPORTED_LOCATION may point to the .lib on Windows — find the matching .dll
-    if(OPENSSL_CRYPTO_DLL MATCHES "\\.lib$" OR NOT OPENSSL_CRYPTO_DLL)
+    if(OPENSSL_CRYPTO_DLL MATCHES "\\.(lib|a)$" OR NOT OPENSSL_CRYPTO_DLL)
         # Search common locations for the DLL
         find_file(OPENSSL_CRYPTO_DLL_FILE
             NAMES libcrypto-3-x64.dll libcrypto-3.dll libcrypto.dll

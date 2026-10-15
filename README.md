@@ -1,3 +1,12 @@
+# A 股观察台 · 个人二开分支
+
+本分支增加沪深京 A 股看板：自选股（扩展列、排序、分组）、当天分时、日 / 周 / 月及分钟 K 线（MA、BOLL、MACD、KDJ、RSI）、五档盘口与分笔成交、个股资料（F10）。实现和运行方式见
+[A 股看板说明](fincept-qt/ashare/README.md)。
+本地构建后可运行 `ashare-dist/AShareBoard.exe`；完整终端源码中也增加了 `ashare` 导航入口。
+该个人二开版本与上游官方产品不同，保留上游版权和许可。以下为上游原始介绍。
+
+---
+
 > [!IMPORTANT]
 > ## 🔒 Fincept Terminal **Enterprise** — the private edition is now available.
 > RealTime data · Multi-agent AI research · Live broker, Backtest & Algo execution · Priority support ·

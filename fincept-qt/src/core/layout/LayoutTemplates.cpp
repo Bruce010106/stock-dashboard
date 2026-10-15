@@ -8,6 +8,8 @@ namespace fincept::layout {
 
 QList<LayoutTemplates::Persona> LayoutTemplates::personas() {
     return {
+        {QStringLiteral("ashare_research"), QStringLiteral("A 股工作台"),
+         QStringLiteral("沪深京自选、当天分时、指数日 K 与资讯研报。")},
         {QStringLiteral("equity_trader"), QStringLiteral("Equity Trader"),
          QStringLiteral("Stock trading with watchlist, ticker chart, and order book.")},
         {QStringLiteral("crypto_trader"), QStringLiteral("Crypto Trader"),
@@ -36,7 +38,11 @@ Workspace LayoutTemplates::make(const QString& persona_id) {
     PanelState p;
     p.instance_id = PanelInstanceId::generate();
 
-    if (persona_id == QStringLiteral("equity_trader")) {
+    if (persona_id == QStringLiteral("ashare_research")) {
+        w.name = QStringLiteral("A 股工作台");
+        p.type_id = QStringLiteral("ashare");
+        p.title = QStringLiteral("A 股工作台");
+    } else if (persona_id == QStringLiteral("equity_trader")) {
         w.name = QStringLiteral("Equity Trader");
         p.type_id = QStringLiteral("equity_trading");
         p.title = QStringLiteral("Equity Trading");
