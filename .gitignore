@@ -195,6 +195,11 @@ fincept-qt/docs/CRYPTO_WALLET_CONNECT.md
 *.md
 !README.md
 !**/README.md
+# A-share fork: project rules, UI specs and third-party licence notice
+!/AGENTS.md
+!/docs/TERMINAL_DESIGN.md
+!/docs/LIQUID_GLASS_DESIGN.md
+!/fincept-qt/ashare/THIRD_PARTY.md
 
 # Local A-share development toolchain and binaries
 .tools/
