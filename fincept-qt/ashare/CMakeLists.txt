@@ -16,6 +16,20 @@ add_library(ashare_board STATIC
     ${AS_SRC}/services/ashare/AShareIndicators.h
     ${AS_SRC}/services/ashare/AShareProfileService.cpp
     ${AS_SRC}/services/ashare/AShareProfileService.h
+    ${AS_SRC}/services/llm/ProviderCatalog.cpp
+    ${AS_SRC}/services/llm/ModelCatalog.cpp
+    ${AS_SRC}/services/ashare/AShareAiService.cpp
+    ${AS_SRC}/services/ashare/AShareAiService.h
+    ${AS_SRC}/services/ashare/AShareLedger.cpp
+    ${AS_SRC}/services/ashare/AShareLedger.h
+    ${AS_SRC}/services/ashare/AShareNotes.cpp
+    ${AS_SRC}/services/ashare/AShareNotes.h
+    ${AS_SRC}/screens/ashare/AShareAiPanel.cpp
+    ${AS_SRC}/screens/ashare/AShareAiPanel.h
+    ${AS_SRC}/screens/ashare/ASharePortfolioPanel.cpp
+    ${AS_SRC}/screens/ashare/ASharePortfolioPanel.h
+    ${AS_SRC}/screens/ashare/AShareNotesPanel.cpp
+    ${AS_SRC}/screens/ashare/AShareNotesPanel.h
     ${AS_SRC}/services/ashare/AShareOverviewService.cpp
     ${AS_SRC}/services/ashare/AShareOverviewService.h
     ${AS_SRC}/screens/ashare/AShareMarketPanel.cpp
@@ -30,6 +44,9 @@ add_library(ashare_board STATIC
     ${AS_SRC}/screens/ashare/AShareScreen.h)
 target_include_directories(ashare_board PUBLIC "${AS_SRC}")
 target_link_libraries(ashare_board PUBLIC Qt6::Widgets Qt6::Network)
+if(WIN32)
+    target_link_libraries(ashare_board PUBLIC crypt32) # DPAPI for the AI API key
+endif()
 if(MSVC)
     target_compile_options(ashare_board PUBLIC /utf-8)
 else()

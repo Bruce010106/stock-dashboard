@@ -19,6 +19,10 @@ namespace fincept::screens {
 class AShareChart;
 class AShareOrderBook;
 class AShareMarketPanel;
+class AShareAiPanel;
+class ASharePortfolioPanel;
+class AShareNotesPanel;
+class AShareStockNotes;
 class AShareProfilePanel;
 class AShareResearchPanel;
 class AShareScreen : public QWidget, public IStatefulScreen {
@@ -35,6 +39,11 @@ class AShareScreen : public QWidget, public IStatefulScreen {
     QVariantMap diagnostics() const;
     void set_market_view(bool market); // 大盘 overview vs single-stock view
     bool market_view() const;
+    enum View { StockView = 0, MarketView = 1, PortfolioView = 2, NotesView = 3 };
+    void set_view(int view);
+    int view() const;
+    // Data snapshot sent to the AI assistant for the selected stock.
+    QString ai_context(bool include_position) const;
   signals:
     void data_loaded();
   protected:
@@ -95,6 +104,10 @@ class AShareScreen : public QWidget, public IStatefulScreen {
     QTimer* timer_;
     QStackedWidget* stack_ = nullptr;
     AShareMarketPanel* market_ = nullptr;
-    QPushButton *view_stock_, *view_market_;
+    QPushButton *view_stock_, *view_market_, *view_portfolio_ = nullptr, *view_notes_ = nullptr;
+    AShareAiPanel* ai_ = nullptr;
+    ASharePortfolioPanel* portfolio_ = nullptr;
+    AShareNotesPanel* notes_ = nullptr;
+    AShareStockNotes* stock_notes_ = nullptr;
 };
 }

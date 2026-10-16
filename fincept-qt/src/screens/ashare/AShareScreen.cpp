@@ -2,6 +2,9 @@
 #include "screens/ashare/AShareTheme.h"
 #include "screens/ashare/AShareChart.h"
 #include "screens/ashare/AShareMarketPanel.h"
+#include "screens/ashare/AShareAiPanel.h"
+#include "screens/ashare/AShareNotesPanel.h"
+#include "screens/ashare/ASharePortfolioPanel.h"
 #include "screens/ashare/AShareOrderBook.h"
 #include "screens/ashare/AShareProfilePanel.h"
 #include "screens/ashare/AShareResearchPanel.h"
@@ -28,6 +31,7 @@
 #include <QTimeZone>
 #include <QVBoxLayout>
 #include <algorithm>
+#include <numeric>
 
 namespace fincept::screens {
 using namespace services::ashare;
@@ -92,7 +96,12 @@ AShareScreen::AShareScreen(QWidget* parent) : QWidget(parent), service_(new ASha
     view_stock_ = new QPushButton(QStringLiteral("个股")); view_stock_->setObjectName("ashareViewStock");
     view_market_ = new QPushButton(QStringLiteral("大盘")); view_market_->setObjectName("ashareViewMarket");
     auto* views = new QButtonGroup(this); views->setExclusive(true);
-    for (auto* button : {view_stock_, view_market_}) { button->setCheckable(true); views->addButton(button); header->addWidget(button); }
+    view_portfolio_ = new QPushButton(QStringLiteral("持仓")); view_portfolio_->setObjectName("ashareViewPortfolio");
+    view_notes_ = new QPushButton(QStringLiteral("笔记")); view_notes_->setObjectName("ashareViewNotes");
+    // No focus ring: the checked state alone marks the active view (they also have hotkeys).
+    for (auto* button : {view_stock_, view_market_, view_portfolio_, view_notes_}) {
+        button->setCheckable(true); button->setFocusPolicy(Qt::NoFocus); views->addButton(button); header->addWidget(button);
+    }
     view_stock_->setChecked(true);
     view_market_->setToolTip(QStringLiteral("市场全景：涨跌分布、涨跌停、板块热力图、龙虎榜（Ctrl+M）"));
     header->addSpacing(6);
@@ -252,6 +261,11 @@ AShareScreen::AShareScreen(QWidget* parent) : QWidget(parent), service_(new ASha
     profile_ = new AShareProfilePanel;
     tabs_->addTab(research_, QStringLiteral("资讯 · 研报 / 新闻 / 快讯"));
     tabs_->addTab(profile_, QStringLiteral("个股资料 · F10"));
+    ai_ = new AShareAiPanel; tabs_->addTab(ai_, QStringLiteral("AI 解读"));
+    ai_->set_context_builder([this](bool include_position) { return ai_context(include_position); });
+    // Notes and portfolio pages are created here so the stock tabs can reference them.
+    notes_ = new AShareNotesPanel; portfolio_ = new ASharePortfolioPanel;
+    stock_notes_ = new AShareStockNotes(notes_); tabs_->addTab(stock_notes_, QStringLiteral("本股笔记"));
     lower_layout->addWidget(tabs_, 1);
     vertical->addWidget(chart_box); vertical->addWidget(lower);
     vertical->setStretchFactor(0, 3); vertical->setStretchFactor(1, 1);
@@ -276,11 +290,23 @@ AShareScreen::AShareScreen(QWidget* parent) : QWidget(parent), service_(new ASha
     market_scroll->setStyleSheet("QScrollArea{background:transparent;border:0;}");
     market_scroll->viewport()->setAutoFillBackground(false); market_scroll->setWidget(market_);
     stack_ = new QStackedWidget; stack_->setObjectName("ashareViews");
-    stack_->addWidget(body_scroll); stack_->addWidget(market_scroll);
+    auto* portfolio_scroll = new QScrollArea; portfolio_scroll->setObjectName("asharePortfolioScroll");
+    portfolio_scroll->setWidgetResizable(true); portfolio_scroll->setFrameShape(QFrame::NoFrame);
+    portfolio_scroll->setStyleSheet("QScrollArea{background:transparent;border:0;}");
+    portfolio_scroll->viewport()->setAutoFillBackground(false); portfolio_scroll->setWidget(portfolio_);
+    stack_->addWidget(body_scroll); stack_->addWidget(market_scroll); stack_->addWidget(portfolio_scroll); stack_->addWidget(notes_);
     root->addWidget(stack_, 1);
     status_ = new QLabel(QStringLiteral("正在连接行情源…")); status_->setWordWrap(true); root->addWidget(status_);
     connect(view_stock_, &QPushButton::clicked, this, [this]() { set_market_view(false); });
     connect(view_market_, &QPushButton::clicked, this, [this]() { set_market_view(true); });
+    connect(view_portfolio_, &QPushButton::clicked, this, [this]() { set_view(PortfolioView); });
+    connect(view_notes_, &QPushButton::clicked, this, [this]() { set_view(NotesView); });
+    connect(portfolio_, &ASharePortfolioPanel::open_stock, this, &AShareScreen::open_stock);
+    connect(notes_, &AShareNotesPanel::open_stock, this, &AShareScreen::open_stock);
+    connect(stock_notes_, &AShareStockNotes::show_all, this, [this](const QString& symbol) { notes_->filter_ticker(symbol); set_view(NotesView); });
+    connect(stock_notes_, &AShareStockNotes::create, this, [this](const QString& symbol, const QString& name) {
+        set_view(NotesView); notes_->filter_ticker(symbol); notes_->new_note_for(symbol, name);
+    });
     connect(market_, &AShareMarketPanel::open_stock, this, &AShareScreen::open_stock);
 
     // ---- Persisted preferences ----
@@ -455,6 +481,9 @@ void AShareScreen::apply_theme(bool dark) {
     // Item colours come from the palette, so rebuild the market views for the new theme.
     if (table_) { rebuild_watchlist(); render_selected(); }
     if (market_) market_->rerender();
+    if (ai_) ai_->set_dark(dark);
+    if (portfolio_) portfolio_->rerender();
+    if (notes_) notes_->rerender();
     for (auto* widget : findChildren<QWidget*>()) widget->update();
     update();
 }
@@ -583,7 +612,7 @@ void AShareScreen::persist() {
 }
 QVariantMap AShareScreen::save_state() const {
     return {{"selected", selected_}, {"daily", mode_->currentIndex() == 1}, {"period", mode_->currentIndex()},
-            {"view", market_view() ? "market" : "stock"}};
+            {"view", QStringList{"stock", "market", "portfolio", "notes"}.value(view(), "stock")}};
 }
 void AShareScreen::restore_state(const QVariantMap& state) {
     const auto symbol = state.value("selected").toString();
@@ -591,14 +620,59 @@ void AShareScreen::restore_state(const QVariantMap& state) {
     // "period" was added later; older saved layouts only carry the daily flag.
     if (state.contains("period")) select_period(state.value("period").toInt());
     else select_daily(state.value("daily").toBool());
-    set_market_view(state.value("view").toString() == "market");
+    const auto view = state.value("view").toString();
+    set_view(view == "market" ? MarketView : view == "portfolio" ? PortfolioView : view == "notes" ? NotesView : StockView);
 }
-bool AShareScreen::market_view() const { return stack_->currentIndex() == 1; }
-void AShareScreen::set_market_view(bool market) {
-    stack_->setCurrentIndex(market ? 1 : 0);
-    view_market_->setChecked(market); view_stock_->setChecked(!market);
-    status_->setVisible(!market); // the market panel shows its own source / freshness line
-    market_->set_active(market);
+bool AShareScreen::market_view() const { return stack_->currentIndex() == MarketView; }
+int AShareScreen::view() const { return stack_->currentIndex(); }
+void AShareScreen::set_market_view(bool market) { set_view(market ? MarketView : StockView); }
+void AShareScreen::set_view(int view) {
+    view = std::clamp(view, int(StockView), int(NotesView));
+    stack_->setCurrentIndex(view);
+    view_stock_->setChecked(view == StockView); view_market_->setChecked(view == MarketView);
+    view_portfolio_->setChecked(view == PortfolioView); view_notes_->setChecked(view == NotesView);
+    status_->setVisible(view == StockView); // other views show their own source / freshness line
+    market_->set_active(view == MarketView);
+    portfolio_->set_active(view == PortfolioView);
+}
+QString AShareScreen::ai_context(bool include_position) const {
+    if (selected_.isEmpty() || is_index(selected_)) return QStringLiteral("（未选中个股）");
+    QStringList lines;
+    const auto& q = quotes_.value(selected_);
+    if (quotes_.contains(selected_)) {
+        lines << QStringLiteral("股票：%1 %2，行情时间 %3（北京时间，腾讯公开行情）").arg(q.name, selected_.toUpper(), q.time.toString("yyyy-MM-dd HH:mm:ss"));
+        lines << QStringLiteral("最新 %1，昨收 %2，涨跌幅 %3%，今开 %4，最高 %5，最低 %6，成交额 %7 亿元")
+                     .arg(q.last, 0, 'f', 2).arg(q.previous, 0, 'f', 2).arg(q.change_percent(), 0, 'f', 2).arg(q.open, 0, 'f', 2)
+                     .arg(q.high, 0, 'f', 2).arg(q.low, 0, 'f', 2).arg(q.amount / 1e8, 0, 'f', 2);
+        lines << QStringLiteral("量比 %1，换手率 %2%，振幅 %3%，总市值 %4 亿元，PE(TTM) %5，PB %6，涨停价 %7，跌停价 %8")
+                     .arg(q.volume_ratio, 0, 'f', 2).arg(q.turnover_rate, 0, 'f', 2).arg(q.amplitude, 0, 'f', 2).arg(q.total_cap / 1e8, 0, 'f', 0)
+                     .arg(q.pe_ttm > 0 ? QString::number(q.pe_ttm, 'f', 1) : QStringLiteral("亏损或无")).arg(q.pb, 0, 'f', 2)
+                     .arg(q.limit_up, 0, 'f', 2).arg(q.limit_down, 0, 'f', 2);
+        const double bids = std::accumulate(q.bids.begin(), q.bids.end(), 0.0, [](double s, const BookLevel& l) { return s + l.volume; });
+        const double asks = std::accumulate(q.asks.begin(), q.asks.end(), 0.0, [](double s, const BookLevel& l) { return s + l.volume; });
+        if (bids + asks > 0) lines << QStringLiteral("五档委比 %1%，外盘 %2 手，内盘 %3 手").arg((bids - asks) / (bids + asks) * 100, 0, 'f', 1)
+                                          .arg(q.outer / 100, 0, 'f', 0).arg(q.inner / 100, 0, 'f', 0);
+    } else lines << QStringLiteral("股票：%1（实时行情尚未加载）").arg(selected_.toUpper());
+    const auto key = kline_key(selected_, KPeriod::Day, Adjust::Forward);
+    if (candles_.contains(key)) {
+        const auto& c = candles_[key];
+        const auto ind = compute_indicators(c);
+        const int i = c.size() - 1;
+        auto f = [](double v, int d = 2) { return has_value(v) ? QString::number(v, 'f', d) : QStringLiteral("—"); };
+        lines << QStringLiteral("日 K 技术指标（前复权，截至 %1）：MA5 %2，MA10 %3，MA20 %4，MA60 %5；MACD DIF %6 DEA %7 柱 %8；KDJ K %9 D %10 J %11；RSI14 %12；BOLL 上 %13 中 %14 下 %15")
+                     .arg(c[i].date.toString(Qt::ISODate), f(ind.ma5[i]), f(ind.ma10[i]), f(ind.ma20[i]), f(ind.ma60[i]), f(ind.dif[i], 3), f(ind.dea[i], 3), f(ind.macd[i], 3), f(ind.k[i]))
+                     .arg(f(ind.d[i]), f(ind.j[i]), f(ind.rsi[i], 1), f(ind.boll_upper[i]), f(ind.boll_mid[i]), f(ind.boll_lower[i]));
+        lines << QStringLiteral("最近 30 个交易日（前复权）：日期 开 高 低 收 成交量(万股)");
+        for (int k = std::max(0, int(c.size()) - 30); k < c.size(); ++k)
+            lines << QStringLiteral("%1 %2 %3 %4 %5 %6").arg(c[k].date.toString("MM-dd")).arg(c[k].open, 0, 'f', 2).arg(c[k].high, 0, 'f', 2)
+                         .arg(c[k].low, 0, 'f', 2).arg(c[k].close, 0, 'f', 2).arg(c[k].volume / 1e4, 0, 'f', 1);
+    } else lines << QStringLiteral("日 K：未加载（若该股数据源不提供前复权序列，则此处为空）");
+    const auto f10 = profile_->summary_for(selected_);
+    lines << (f10.isEmpty() ? QStringLiteral("F10：未加载（打开「个股资料」页签后才会获取）") : QStringLiteral("F10 摘要（东方财富）：") + QChar('\n') + f10);
+    const auto market = market_->summary();
+    if (!market.isEmpty()) lines << market;
+    if (include_position) lines << portfolio_->position_summary(selected_);
+    return lines.join(QChar('\n'));
 }
 void AShareScreen::open_stock(const QString& symbol) {
     if (normalize_symbol(symbol) != symbol) return;
@@ -683,6 +757,8 @@ void AShareScreen::select_symbol(const QString& symbol) {
     tabs_->setVisible(!index); order_book_->setVisible(!index);
     research_->set_symbol(index ? QString() : symbol);
     profile_->set_symbol(index ? QString() : symbol);
+    ai_->set_symbol(index ? QString() : symbol, quotes_.value(symbol).name);
+    stock_notes_->set_symbol(index ? QString() : symbol, quotes_.value(symbol).name);
     update_chart_controls(); render_indexes();
     { QSignalBlocker blocker(table_); table_->setCurrentCell(-1, -1); table_->selectRow(visible_.indexOf(symbol)); }
     chart_->clear(QStringLiteral("正在加载…")); order_book_->clear(QStringLiteral("正在加载盘口…")); render_selected();

@@ -5,6 +5,18 @@
 #include "services/ashare/AShareResearchService.h"
 #include "core/layout/LayoutTemplates.h"
 #include "screens/ashare/AShareOrderBook.h"
+#include "screens/ashare/AShareAiPanel.h"
+#include "screens/ashare/AShareNotesPanel.h"
+#include "screens/ashare/ASharePortfolioPanel.h"
+#include "services/ashare/AShareAiService.h"
+#include "services/ashare/AShareLedger.h"
+#include "services/ashare/AShareNotes.h"
+#include "services/ashare/AShareStorage.h"
+#include <QPlainTextEdit>
+#include <QRegularExpression>
+#include <QStandardPaths>
+#include <QTcpServer>
+#include <QTcpSocket>
 #include "screens/ashare/AShareMarketPanel.h"
 #include "services/ashare/AShareOverviewService.h"
 #include <QLabel>
@@ -64,6 +76,8 @@ class AShareTests : public QObject {
         QVERIFY(restored.save_state()["daily"].toBool());
     }
     void initTestCase() {
+        // Portfolio / notes default to AppDataLocation; never touch the user's real files from tests.
+        QStandardPaths::setTestModeEnabled(true);
 #ifdef Q_OS_WIN
         QFontDatabase::addApplicationFont(qEnvironmentVariable("WINDIR") + "/Fonts/msyh.ttc");
 #endif
@@ -597,6 +611,192 @@ class AShareTests : public QObject {
         QCOMPARE(screen.findChild<QTableWidget*>("ashareWatchlist")->rowCount(), 5);
         screen.restore_state({{"selected", "sz002815"}, {"view", "market"}});
         QVERIFY(screen.market_view());
+    }
+    // ---- Fincept modules: AI assistant, portfolio ledger, notes ----
+    void ai_request_shapes_and_endpoints() {
+        QVERIFY(!supported_ai_providers().contains("gemini")); QVERIFY(!supported_ai_providers().contains("fincept"));
+        QVERIFY(supported_ai_providers().contains("deepseek")); QVERIFY(supported_ai_providers().contains("anthropic"));
+        AiSettings ds{"deepseek", "deepseek-chat", {}};
+        QCOMPARE(ai_endpoint(ds), "https://api.deepseek.com/v1/chat/completions");
+        auto body = QJsonDocument::fromJson(build_ai_body(ds, "SYS", {{"user", "Q"}})).object();
+        QCOMPARE(body["messages"].toArray()[0].toObject()["role"].toString(), "system");
+        QVERIFY(body.contains("max_tokens") && body.contains("temperature") && body["stream"].toBool());
+        QVERIFY(body["max_tokens"].toInt() <= 4096);
+        AiSettings claude{"anthropic", "claude-sonnet-5", {}};
+        body = QJsonDocument::fromJson(build_ai_body(claude, "SYS", {{"user", "Q"}})).object();
+        QCOMPARE(body["system"].toString(), "SYS"); QCOMPARE(body["messages"].toArray().size(), 1);
+        QVERIFY(ai_endpoint(claude).endsWith("/messages"));
+        AiSettings openai{"openai", "gpt-4o", {}};
+        body = QJsonDocument::fromJson(build_ai_body(openai, "SYS", {{"user", "Q"}})).object();
+        QVERIFY(body.contains("max_completion_tokens") && !body.contains("temperature"));
+        // OpenAI-compatible third parties via custom base URL (e.g. Qwen DashScope).
+        AiSettings qwen{"openai", "qwen-plus", "https://dashscope.aliyuncs.com/compatible-mode/v1"};
+        QCOMPARE(ai_endpoint(qwen), "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions");
+        QVERIFY(ai_endpoint({"openai", "x", "https://api.atlascloud.ai/v1"}).isEmpty()); // Fincept's hard block is kept
+    }
+    void ai_stream_parsing() {
+        SseBuffer sse;
+        QVERIFY(sse.feed("data: {\"choices\":[{\"delta\":{\"content\":\"你\"}}]}\n\ndata: {\"cho").size() == 1);
+        const auto rest = sse.feed("ices\":[{\"delta\":{\"content\":\"好\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n");
+        QCOMPARE(rest.size(), 2);
+        bool done = false;
+        QCOMPARE(ai_stream_delta("deepseek", rest[0], &done), QStringLiteral("好")); QVERIFY(done);
+        done = false; ai_stream_delta("deepseek", rest[1], &done); QVERIFY(done);
+        QCOMPARE(ai_stream_delta("deepseek", R"({"choices":[{"delta":{"reasoning_content":"内部推理"}}]})", nullptr), QString());
+        QCOMPARE(ai_stream_delta("anthropic", R"({"type":"content_block_delta","delta":{"type":"text_delta","text":"Hi"}})", nullptr), "Hi");
+        done = false; ai_stream_delta("anthropic", R"({"type":"message_stop"})", &done); QVERIFY(done);
+        bool thinking = false;
+        QCOMPARE(visible_ai_text("<think>推理中", &thinking), QString()); QVERIFY(thinking);
+        QCOMPARE(visible_ai_text("<think>a</think>结论", &thinking), QStringLiteral("结论")); QVERIFY(!thinking);
+    }
+    void ai_key_is_encrypted_at_rest() {
+#ifdef Q_OS_WIN
+        QTemporaryDir dir; QSettings::setDefaultFormat(QSettings::IniFormat);
+        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, dir.path());
+        QString error;
+        QVERIFY2(store_api_key("deepseek", "sk-test-1234567890", error), qPrintable(error));
+        QVERIFY(has_api_key("deepseek")); QCOMPARE(load_api_key("deepseek"), "sk-test-1234567890");
+        QSettings raw(QSettings::defaultFormat(), QSettings::UserScope, "AShareBoard", "Personal");
+        QVERIFY(!raw.value("ai/keys/deepseek").toString().contains("sk-test")); // ciphertext only
+        forget_api_key("deepseek"); QVERIFY(!has_api_key("deepseek"));
+#else
+        QSKIP("DPAPI is Windows-only");
+#endif
+    }
+    void ai_panel_streams_from_local_server() {
+        QTemporaryDir dir; QSettings::setDefaultFormat(QSettings::IniFormat);
+        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, dir.path());
+        // Minimal OpenAI-compatible SSE server; ollama needs no key, so no secret is involved.
+        QTcpServer server; QVERIFY(server.listen(QHostAddress::LocalHost));
+        QByteArray request;
+        connect(&server, &QTcpServer::newConnection, this, [&]() {
+            auto* socket = server.nextPendingConnection();
+            connect(socket, &QTcpSocket::readyRead, socket, [&, socket]() {
+                request += socket->readAll();
+                const int header_end = request.indexOf("\r\n\r\n");
+                if (header_end < 0) return;
+                const int length = QRegularExpression("Content-Length: (\\d+)", QRegularExpression::CaseInsensitiveOption)
+                                       .match(QString::fromLatin1(request.left(header_end))).captured(1).toInt();
+                if (request.size() < header_end + 4 + length) return;
+                socket->write("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n");
+                socket->write("data: {\"choices\":[{\"delta\":{\"content\":\"<think>先看数据\"}}]}\n\n");
+                socket->write("data: {\"choices\":[{\"delta\":{\"content\":\"</think>## 走势概况\\n均线多头排列。\"}}]}\n\n");
+                socket->write("data: [DONE]\n\n");
+                socket->disconnectFromHost();
+            });
+        });
+        save_ai_settings({"ollama", "local-test", QString("http://127.0.0.1:%1").arg(server.serverPort())});
+        fincept::screens::AShareAiPanel panel; panel.resize(800, 500); panel.show();
+        panel.set_context_builder([](bool with_position) { return QString("CTX-SNAPSHOT position=%1").arg(with_position); });
+        panel.set_symbol("sh600519", QStringLiteral("贵州茅台"));
+        auto* input = panel.findChild<QLineEdit*>("ashareAiInput"); input->setText(QStringLiteral("怎么看？"));
+        input->returnPressed();
+        auto* text = panel.findChild<QTextBrowser*>("ashareAiText");
+        QTRY_VERIFY_WITH_TIMEOUT(text->toPlainText().contains(QStringLiteral("均线多头排列")), 8000);
+        QVERIFY(!text->toPlainText().contains(QStringLiteral("先看数据"))); // reasoning hidden
+        QVERIFY(request.contains("/v1/chat/completions"));
+        QVERIFY(request.contains("CTX-SNAPSHOT position=0")); // holdings not sent unless opted in
+        QVERIFY(!request.contains("Authorization"));
+    }
+    void squarify_fills_area_without_overlap() {
+        const QRectF area(0, 0, 400, 300);
+        const auto rects = fincept::screens::squarify({50, 30, 10, 5, 5}, area);
+        QCOMPARE(rects.size(), 5);
+        double sum = 0; for (const auto& r : rects) sum += r.width() * r.height();
+        QVERIFY(std::abs(sum - 120000) < 1);
+        for (int i = 0; i < rects.size(); ++i) for (int j = i + 1; j < rects.size(); ++j)
+            QVERIFY(rects[i].intersected(rects[j]).width() * rects[i].intersected(rects[j]).height() < 1e-6);
+        QVERIFY(std::abs(rects[0].width() * rects[0].height() - 60000) < 1); // 50 / 100 of the area
+    }
+    void ledger_average_cost_and_realised() {
+        QVector<LedgerTxn> t{
+            {"1", "sh600519", "", "BUY", "", QDate(2026, 1, 5), 100, 1000, 5},
+            {"2", "sh600519", "", "BUY", "", QDate(2026, 2, 5), 100, 1200, 5},
+            {"3", "sh600519", "", "SELL", "", QDate(2026, 3, 5), 50, 1300, 10},
+            {"4", "sh600519", "", "DIVIDEND", "", QDate(2026, 6, 20), 0, 2000, 0},
+            {"5", "sz000001", "", "BUY", "", QDate(2026, 1, 6), 1000, 11, 2},
+            {"6", "sz000001", "", "SELL", "", QDate(2026, 1, 9), 1000, 12, 2}};
+        const auto r = compute_ledger(t);
+        QCOMPARE(r.open.size(), 1); QCOMPARE(r.closed.size(), 1);
+        const auto& m = r.open[0];
+        QCOMPARE(m.quantity, 150.0);
+        // avg = (100*1000+5 + 100*1200+5) / 200 = 1100.05; realised = 50*1300 - 10 - 50*1100.05
+        QVERIFY(std::abs(m.avg_cost() - 1100.05) < 1e-9);
+        QVERIFY(std::abs(m.realized - (65000 - 10 - 55002.5)) < 1e-6);
+        QCOMPARE(m.dividends, 2000.0);
+        QVERIFY(std::abs(r.closed[0].realized - (12000 - 2 - 11002)) < 1e-6);
+        QVERIFY(std::abs(r.fees - 24) < 1e-9);
+        // Selling more than held is clamped and reported, never producing negative holdings.
+        const auto over = compute_ledger({{"a", "sh600519", "", "BUY", "", QDate(2026, 1, 1), 100, 10, 0},
+                                          {"b", "sh600519", "", "SELL", "", QDate(2026, 1, 2), 300, 11, 0}});
+        QVERIFY(over.open.isEmpty()); QCOMPARE(over.warnings.size(), 1);
+        QString error;
+        QVERIFY(!validate_txn({"x", "sh000001", "", "BUY", "", QDate(2026, 1, 1), 1, 1, 0}, error)); // indexes are not tradable
+        QVERIFY(!validate_txn({"x", "sh600519", "", "BUY", "", QDate(2026, 1, 1), 0, 1, 0}, error));
+    }
+    void portfolio_panel_persists_and_guards() {
+        QTemporaryDir dir; QSettings::setDefaultFormat(QSettings::IniFormat);
+        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, dir.path());
+        set_data_dir(dir.path() + "/data");
+        {
+            fincept::screens::ASharePortfolioPanel panel; QString error;
+            QVERIFY2(panel.add_transaction({"", "sh600519", QStringLiteral("贵州茅台"), "BUY", "", QDate(2026, 3, 1), 100, 1200, 6}, error), qPrintable(error));
+            QVERIFY(!panel.add_transaction({"", "sh600519", "", "SELL", "", QDate(2026, 2, 1), 50, 1300, 0}, error)); // before the buy
+            QVERIFY(error.contains(QStringLiteral("超过")));
+            QCOMPARE(panel.holdings().size(), 1);
+            QVERIFY(panel.position_summary("sh600519").contains(QStringLiteral("100 股")));
+            QVERIFY(panel.position_summary("sz000001").contains(QStringLiteral("未持有")));
+        }
+        fincept::screens::ASharePortfolioPanel reloaded;
+        QCOMPARE(reloaded.transactions().size(), 1); QCOMPARE(reloaded.transactions()[0].fee, 6.0);
+        // A corrupt ledger is never overwritten by a later save.
+        QFile bad(ledger_path()); QVERIFY(bad.open(QIODevice::WriteOnly)); bad.write("{broken"); bad.close();
+        fincept::screens::ASharePortfolioPanel guarded; QString error;
+        QVERIFY(!guarded.add_transaction({"", "sh600519", "", "BUY", "", QDate(2026, 3, 2), 100, 1, 0}, error));
+        QFile check(ledger_path()); QVERIFY(check.open(QIODevice::ReadOnly)); QCOMPARE(check.readAll(), QByteArray("{broken"));
+        set_data_dir({});
+    }
+    void notes_model_and_panel() {
+        QCOMPARE(parse_tickers(QStringLiteral("600519, 平安 sz000001；000001 bad 510300")), (QStringList{"sh600519", "sz000001"}));
+        Note n; n.title = QStringLiteral("茅台复盘"); n.content = "body"; n.tickers = {"sh600519"}; n.tags = {QStringLiteral("白酒")}; n.category = "review";
+        QVERIFY(note_matches(n, QStringLiteral("白酒"), {}, {}, false));
+        QVERIFY(note_matches(n, "600519", "review", "sh600519", false));
+        QVERIFY(!note_matches(n, {}, "trade", {}, false)); QVERIFY(!note_matches(n, {}, {}, {}, true));
+        QVERIFY(note_to_markdown(n).startsWith(QStringLiteral("# 茅台复盘")));
+        QTemporaryDir dir; set_data_dir(dir.path());
+        {
+            fincept::screens::AShareNotesPanel panel;
+            panel.new_note_for("sh600519", QStringLiteral("贵州茅台"));
+            panel.findChild<QPlainTextEdit*>("ashareNoteContent")->setPlainText(QStringLiteral("买入理由"));
+            panel.findChild<QLineEdit*>("ashareNoteTickers")->setText("600519 000001");
+            QString error; QVERIFY2(panel.save_current(error), qPrintable(error));
+            QCOMPARE(panel.notes_for("sz000001").size(), 1);
+        }
+        fincept::screens::AShareNotesPanel reloaded;
+        QCOMPARE(reloaded.note_count(), 1);
+        QCOMPARE(reloaded.notes_for("sh600519").first().content, QStringLiteral("买入理由"));
+        set_data_dir({});
+    }
+    void screen_views_and_ai_context() {
+        QTemporaryDir dir; QSettings::setDefaultFormat(QSettings::IniFormat);
+        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, dir.path());
+        set_data_dir(dir.path() + "/data");
+        fincept::screens::AShareScreen screen; screen.resize(1320, 940); screen.show();
+        screen.findChild<QPushButton*>("ashareViewPortfolio")->click();
+        QCOMPARE(screen.view(), int(fincept::screens::AShareScreen::PortfolioView));
+        QCOMPARE(screen.save_state()["view"].toString(), "portfolio");
+        screen.findChild<QPushButton*>("ashareViewNotes")->click();
+        QCOMPARE(screen.view(), int(fincept::screens::AShareScreen::NotesView));
+        screen.restore_state({{"selected", "sz000001"}, {"view", "notes"}});
+        QCOMPARE(screen.view(), int(fincept::screens::AShareScreen::NotesView));
+        screen.set_view(fincept::screens::AShareScreen::StockView);
+        Quote q; QString error; QVERIFY(parse_quote(fixture(), "sz000001", q, error));
+        screen.findChild<AShareMarketService*>()->quote_ready(q);
+        const auto context = screen.ai_context(false);
+        QVERIFY(context.contains(QStringLiteral("平安银行"))); QVERIFY(context.contains(QStringLiteral("F10：未加载")));
+        QVERIFY(!context.contains(QStringLiteral("我的持仓")));
+        QVERIFY(screen.ai_context(true).contains(QStringLiteral("我的持仓")));
+        set_data_dir({});
     }
 };
 QTEST_MAIN(AShareTests)

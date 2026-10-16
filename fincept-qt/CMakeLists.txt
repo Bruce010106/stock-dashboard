@@ -1862,6 +1862,12 @@ set(SCREEN_SOURCES
     src/services/ashare/AShareIndicators.cpp
     src/services/ashare/AShareProfileService.cpp
     src/services/ashare/AShareOverviewService.cpp
+    src/services/ashare/AShareAiService.cpp
+    src/services/ashare/AShareLedger.cpp
+    src/services/ashare/AShareNotes.cpp
+    src/screens/ashare/AShareAiPanel.cpp
+    src/screens/ashare/ASharePortfolioPanel.cpp
+    src/screens/ashare/AShareNotesPanel.cpp
     src/screens/ashare/AShareMarketPanel.cpp
     src/screens/ashare/AShareOrderBook.cpp
     src/screens/ashare/AShareProfilePanel.cpp
@@ -2200,6 +2206,12 @@ set_source_files_properties(
     src/services/ashare/AShareIndicators.cpp
     src/services/ashare/AShareProfileService.cpp
     src/services/ashare/AShareOverviewService.cpp
+    src/services/ashare/AShareAiService.cpp
+    src/services/ashare/AShareLedger.cpp
+    src/services/ashare/AShareNotes.cpp
+    src/screens/ashare/AShareAiPanel.cpp
+    src/screens/ashare/ASharePortfolioPanel.cpp
+    src/screens/ashare/AShareNotesPanel.cpp
     src/screens/ashare/AShareMarketPanel.cpp
     src/screens/ashare/AShareOrderBook.cpp
     src/screens/ashare/AShareProfilePanel.cpp
