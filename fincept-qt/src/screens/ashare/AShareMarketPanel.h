@@ -58,6 +58,7 @@ class AShareMarketPanel : public QWidget {
     void refresh(bool force);
     void rerender(); // re-apply palette-dependent colours after a theme switch
     QVariantMap diagnostics() const;
+    QString summary() const; // one-line breadth digest for the AI context; empty until loaded
   signals:
     void open_stock(const QString& symbol);
     void data_loaded();

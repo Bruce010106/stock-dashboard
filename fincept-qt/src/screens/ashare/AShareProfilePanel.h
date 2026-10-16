@@ -13,6 +13,8 @@ class AShareProfilePanel : public QWidget {
     void set_active(bool active);
     void set_dark(bool dark);
     static QString render_html(const services::ashare::StockProfile& profile, bool dark);
+    // Plain-text F10 digest for the AI context; empty unless this symbol's profile is loaded.
+    QString summary_for(const QString& symbol) const;
   private:
     void load(bool force);
     void render();

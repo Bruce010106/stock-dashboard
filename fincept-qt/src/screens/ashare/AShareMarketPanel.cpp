@@ -437,6 +437,14 @@ void AShareMarketPanel::update_status() {
     problems.removeDuplicates();
     status_->setText(parts.join(QStringLiteral("  |  ")) + (problems.isEmpty() ? QString() : QStringLiteral("\n未取得：") + problems.join(QStringLiteral("；"))));
 }
+QString AShareMarketPanel::summary() const {
+    if (!has_breadth_) return {};
+    QString text = QStringLiteral("全市场（%1）：上涨 %2 家、下跌 %3 家、平盘 %4 家").arg(breadth_.date.toString(Qt::ISODate))
+                       .arg(breadth_.up).arg(breadth_.down).arg(breadth_.flat);
+    if (pools_.contains("zt")) text += QStringLiteral("；涨停 %1 家").arg(pools_["zt"].total);
+    if (pools_.contains("dt")) text += QStringLiteral("；跌停 %1 家").arg(pools_["dt"].total);
+    return text;
+}
 QVariantMap AShareMarketPanel::diagnostics() const {
     return {{"breadth_total", has_breadth_ ? breadth_.total() : 0}, {"up", breadth_.up}, {"down", breadth_.down},
             {"heat_tiles", heatmap_->tile_count()}, {"board_stocks", board_stocks_.size()},

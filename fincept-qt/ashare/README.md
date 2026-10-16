@@ -86,6 +86,39 @@ Launchpad 增加「A 股工作台」模板；新会话没有已有布局时默�
 
 2026-10-15 收盘后实测：涨跌分布 5368 只（涨 417 / 平 26 / 跌 4925），申万一级 31 个板块，点击板块取到 40 只成分股，涨停池 36、炸板池 7，龙虎榜 2026-10-14 共 68 只。
 
+## 从 Fincept 接入的模块：AI 解读、持仓、笔记
+
+顶部视图切换为「个股 / 大盘 / 持仓 / 笔记」。三个模块都不依赖 Python，也不需要 Fincept 账号或其云服务。
+
+**AI 解读**（个股页签）
+- 复用 Fincept 的 `services/llm/ProviderCatalog`（服务商列表、默认地址、端点拼接、AtlasCloud 屏蔽）和 `ModelCatalog`（各模型输出上限）；
+  `LlmHttpHelpers.cpp` 中的错误信息解析与 `<think>` 过滤两个函数复制进 `AShareAiService.cpp`（原文件依赖 LlmService / MCP，未链接）。
+  未接入 Fincept 的 MCP 工具调用、账号、DataHub 和数据库配置。
+- 支持 OpenAI 兼容服务商（DeepSeek、Kimi、OpenAI、OpenRouter、Groq、xAI、MiniMax、AIHubMix、本地 Ollama 等）和 Anthropic；
+  暂不支持 Gemini 原生接口与 Fincept 自家模型。通义千问等可选 OpenAI 并填写其兼容接口地址。
+- API Key 用 Windows DPAPI 按当前系统用户加密后存入本地设置；其他平台拒绝保存。
+- 每次对话首轮发送的数据快照：该股实时行情与扩展字段、五档摘要、日 K 指标、最近 30 根前复权日 K、已加载的 F10 摘要、已加载的大盘涨跌家数。
+  勾选「附带我的持仓」时才附带该股持仓数量与成本。模型输出按 Markdown 渲染并禁用原始 HTML。推理模型的思考内容不显示。
+- AI 输出可能有误，不构成投资建议；系统提示要求模型只依据所给数据回答、缺失数据明确说明。
+
+**持仓**
+- 交易记录：买入、卖出、分红，费用按券商交割单手工填写；加权平均成本法计算持仓成本与已实现盈亏；卖出超过当日持仓会被拒绝。
+- 行情：独立请求腾讯公开快照，交易时段每 30 秒刷新；当日盈亏按“当前持仓 × 今日涨跌”估算，不区分当日买卖。
+- 持仓分布图（矩形面积 = 市值，颜色可切换浮动盈亏 / 当日涨跌 / 仓位）参考 Fincept `PortfolioHeatmap` 的三种模式，用本看板配色重新绘制；
+  CSV 导出直接复用 Fincept `screens/portfolio/PortfolioCsv.h`（含公式注入防护）。
+- 数据保存在本地 `portfolio.json`（Windows 用户 AppData 下的 AShareBoard 目录），原子写入；文件损坏时不会被覆盖。
+
+**笔记**
+- 数据模型沿用 Fincept `FinancialNote` 的分类、观点（看多 / 看空 / 中性）、关联股票、标签、收藏；存为本地 `notes.json`，不使用 Fincept 的 SQLite。
+- 支持搜索、分类与收藏筛选、按股票筛选、Markdown 预览（禁用原始 HTML）、导出 Markdown、Ctrl+S 保存。
+- 个股页的「本股笔记」页签列出关联该股的笔记，可一键新建或跳转。
+
+联网冒烟验证（写入两笔示例持仓与一条笔记到输出目录，不触碰个人数据）：
+
+```powershell
+./ashare-dist/AShareBoard.exe -platform offscreen --modules-smoke-output ./ashare-build/modules-verified
+```
+
 ## 盘口与个股资料来源
 
 | 能力 | 接口 | 说明 |
@@ -184,10 +217,12 @@ $env:FINCEPT_SMOKE_OUTPUT = "$PWD/ashare-build/workbench-smoke"
 
 ## 验证
 
-`AShareTests`（34 项）覆盖代码识别、交易时段、分时排序和单位换算、跨交易日隔离、前复权约束、空数据与横盘绘图，
+`AShareTests`（43 项）覆盖代码识别、交易时段、分时排序和单位换算、跨交易日隔离、前复权约束、空数据与横盘绘图，
 以及扩展快照字段与科创板单位、多周期与复权口径、分笔解析、指标参考值、F10 解析与 HTML 转义、
 副图绘制、盘口计数（含分笔先于行情到达）、周期状态恢复、自选排序 / 列显示 / 分组持久化，
 以及涨跌分布、板块、成分股、涨跌停池、龙虎榜解析，大盘面板渲染与双击打开个股、个股 / 大盘视图切换与状态恢复。
+还覆盖 AI 请求体与端点、SSE 流解析与思考内容隐藏、DPAPI 密钥加密存储、本地模拟服务端的流式问答（默认不发送持仓），
+持仓加权平均成本 / 已实现盈亏 / 超卖拒绝 / 损坏文件不覆盖、矩形树图面积、笔记筛选与持久化、四个视图切换与 AI 数据快照。
 
 2026-10-15 验证记录：29 项通过，2 项联网用例按设计跳过；交易时段内对打包后的 `ashare-dist/AShareBoard.exe` 运行扩展功能联网冒烟，
 各项检查通过（分笔 40 条、周 K 320 根、15 分钟 K 320 根、日 K 401 根、F10 财务 9 期）。

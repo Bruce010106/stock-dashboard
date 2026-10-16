@@ -11,7 +11,13 @@
 #include <QScreen>
 #include "services/ashare/AShareResearchService.h"
 #include "services/ashare/AShareProfileService.h"
+#include "services/ashare/AShareStorage.h"
 #include "screens/ashare/AShareMarketPanel.h"
+#include "screens/ashare/ASharePortfolioPanel.h"
+#include "screens/ashare/AShareNotesPanel.h"
+#include "services/ashare/AShareLedger.h"
+#include "services/ashare/AShareNotes.h"
+#include <QTabWidget>
 #include <QMouseEvent>
 #include <QTabWidget>
 #include <functional>
@@ -33,20 +39,36 @@ int main(int argc, char** argv) {
     const bool research_smoke = args.contains("--research-smoke-output");
     const bool feature_smoke = args.contains("--feature-smoke-output");
     const bool market_smoke = args.contains("--market-smoke-output");
+    const bool modules_smoke = args.contains("--modules-smoke-output");
     const int capture_index = args.indexOf(research_smoke ? "--research-smoke-output"
                                            : feature_smoke ? "--feature-smoke-output"
-                                           : market_smoke ? "--market-smoke-output" : "--smoke-output");
+                                           : market_smoke ? "--market-smoke-output"
+                                           : modules_smoke ? "--modules-smoke-output" : "--smoke-output");
     const QString output = capture_index >= 0 ? args.value(capture_index + 1) : QString();
     if (!output.isEmpty()) {
         QDir().mkpath(output);
         QSettings::setDefaultFormat(QSettings::IniFormat);
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, output + "/settings");
+        // Smoke runs keep portfolio / notes files beside their output, never in the user's data folder.
+        fincept::services::ashare::set_data_dir(output + "/data");
     }
     if (feature_smoke) {
         // Fresh isolated settings: one main-board, one STAR and one SZ stock.
         QSettings seed(QSettings::defaultFormat(), QSettings::UserScope, "AShareBoard", "Personal");
         seed.clear();
         seed.setValue("symbols", QStringList{"sh600519", "sh688981", "sz000001"}); seed.setValue("selected", "sh600519");
+    }
+    if (modules_smoke) {
+        // Seed a small ledger and one note in the isolated data folder.
+        using namespace fincept::services::ashare;
+        QString error;
+        save_ledger(ledger_path(), {
+            {"t1", "sh600519", QStringLiteral("贵州茅台"), "BUY", QStringLiteral("示例"), QDate(2026, 9, 1), 100, 1250, 6.25},
+            {"t2", "sz000001", QStringLiteral("平安银行"), "BUY", QString(), QDate(2026, 9, 2), 2000, 11.2, 5},
+            {"t3", "sz000001", QStringLiteral("平安银行"), "SELL", QString(), QDate(2026, 10, 9), 500, 11.6, 5.3}}, error);
+        Note note; note.id = "n1"; note.title = QStringLiteral("茅台跟踪"); note.content = QStringLiteral("## 买入理由\n- 估值回落\n- 关注中报");
+        note.tickers = {"sh600519"}; note.sentiment = "bullish"; note.created = note.updated = QDateTime::currentDateTimeUtc();
+        save_notes(notes_path(), {note}, error);
     }
     fincept::screens::AShareScreen screen;
     screen.setWindowTitle(QStringLiteral("A 股观察台 · 个人版"));
@@ -220,7 +242,53 @@ int main(int argc, char** argv) {
         poll->start();
         QTimer::singleShot(120000, &app, [&]() { screen.grab().save(output + "/market-timeout.png"); app.exit(3); });
     }
-    if (!output.isEmpty() && !research_smoke && !feature_smoke && !market_smoke) {
+    if (!output.isEmpty() && modules_smoke) {
+        auto* portfolio = screen.findChild<fincept::screens::ASharePortfolioPanel*>();
+        auto* notes = screen.findChild<fincept::screens::AShareNotesPanel*>();
+        screen.set_view(fincept::screens::AShareScreen::PortfolioView);
+        auto* poll = new QTimer(&app); poll->setInterval(400);
+        auto step = std::make_shared<int>(0);
+        auto started = std::make_shared<QDateTime>(QDateTime::currentDateTimeUtc());
+        auto result = std::make_shared<QJsonObject>();
+        QObject::connect(poll, &QTimer::timeout, &app, [&, poll, step, started, result, portfolio, notes]() {
+            const auto elapsed = started->secsTo(QDateTime::currentDateTimeUtc());
+            int priced = 0; for (const auto& h : portfolio->holdings()) if (h.priced) ++priced;
+            if (*step == 0 && ((priced == portfolio->holdings().size() && priced > 0 && elapsed > 1) || elapsed > 25)) {
+                screen.grab().save(output + "/portfolio-dark.png");
+                (*result)["holdings"] = int(portfolio->holdings().size()); (*result)["priced"] = priced;
+                (*result)["summary_600519"] = portfolio->position_summary("sh600519");
+                screen.set_view(fincept::screens::AShareScreen::NotesView);
+                *step = 1; *started = QDateTime::currentDateTimeUtc();
+            } else if (*step == 1 && elapsed >= 1) {
+                screen.grab().save(output + "/notes-dark.png");
+                (*result)["notes"] = notes->note_count(); (*result)["notes_600519"] = int(notes->notes_for("sh600519").size());
+                screen.set_view(fincept::screens::AShareScreen::StockView);
+                screen.restore_state({{"selected", "sh600519"}, {"view", "stock"}});
+                screen.findChild<QTabWidget*>("ashareInfoTabs")->setCurrentIndex(2);
+                *step = 2; *started = QDateTime::currentDateTimeUtc();
+            } else if (*step == 2 && (screen.has_daily() || elapsed > 20) && elapsed >= 2) {
+                screen.grab().save(output + "/ai-tab-dark.png");
+                (*result)["ai_context_chars"] = int(screen.ai_context(false).size());
+                screen.findChild<QComboBox*>("ashareTheme")->setCurrentIndex(0);
+                screen.set_view(fincept::screens::AShareScreen::PortfolioView);
+                *step = 3; *started = QDateTime::currentDateTimeUtc();
+            } else if (*step == 3 && elapsed >= 1) {
+                screen.grab().save(output + "/portfolio-light.png");
+                poll->stop();
+                const QJsonObject checks{{"holdings_priced", (*result)["priced"].toInt() == 2 && (*result)["holdings"].toInt() == 2},
+                                         {"notes_loaded", (*result)["notes"].toInt() == 1 && (*result)["notes_600519"].toInt() == 1},
+                                         {"ai_context", (*result)["ai_context_chars"].toInt() > 500}};
+                bool ok = true; for (const auto& v : checks) ok = ok && v.toBool();
+                (*result)["checks"] = checks; (*result)["ok"] = ok;
+                QFile file(output + "/modules-smoke.json"); file.open(QIODevice::WriteOnly);
+                file.write(QJsonDocument(*result).toJson()); file.close();
+                app.exit(ok ? 0 : 5);
+            }
+        });
+        poll->start();
+        QTimer::singleShot(120000, &app, [&]() { app.exit(3); });
+    }
+    if (!output.isEmpty() && !research_smoke && !feature_smoke && !market_smoke && !modules_smoke) {
         QObject::connect(&screen, &fincept::screens::AShareScreen::data_loaded, &app, [&]() {
             if (captured || !screen.has_quote() || !screen.has_daily()) return;
             captured = true;

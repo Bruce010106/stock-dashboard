@@ -5,6 +5,7 @@
 #include <QTextBrowser>
 #include <QTimeZone>
 #include <QVBoxLayout>
+#include <algorithm>
 #include <cmath>
 
 namespace fincept::screens {
@@ -72,6 +73,29 @@ void AShareProfilePanel::load(bool force) {
 }
 void AShareProfilePanel::render() { text_->setHtml(render_html(profile_, dark_)); }
 
+QString AShareProfilePanel::summary_for(const QString& symbol) const {
+    if (!has_profile_ || loaded_ != symbol) return {};
+    const auto& p = profile_;
+    QStringList lines;
+    if (!p.industry.isEmpty()) lines << QStringLiteral("行业：%1；板块：%2").arg(p.industry, p.board);
+    if (!p.concepts.isEmpty()) lines << QStringLiteral("概念：%1").arg(p.concepts.mid(0, 12).join(QStringLiteral("、")));
+    if (!p.business.isEmpty()) {
+        QStringList items;
+        for (int i = 0; i < std::min<int>(4, p.business.first().items.size()); ++i) {
+            const auto& it = p.business.first().items[i];
+            items << QStringLiteral("%1 %2%").arg(it.name).arg(it.ratio * 100, 0, 'f', 1);
+        }
+        lines << QStringLiteral("主营构成（%1，%2）：%3").arg(p.business.first().kind, p.business.first().report_date, items.join(QStringLiteral("；")));
+    }
+    for (int i = 0; i < std::min<int>(3, p.finance.size()); ++i) {
+        const auto& f = p.finance[i];
+        lines << QStringLiteral("%1：营收 %2 亿（同比 %3%），归母净利 %4 亿（同比 %5%），ROE %6%，毛利率 %7%，资产负债率 %8%")
+                     .arg(f.period, num(f.revenue / 1e8), num(f.revenue_yoy), num(f.net_profit / 1e8), num(f.net_profit_yoy), num(f.roe),
+                          num(f.gross_margin), num(f.debt_ratio));
+    }
+    if (!p.holder_counts.isEmpty()) lines << QStringLiteral("股东户数（%1）：%2").arg(p.holder_counts.first().date).arg(p.holder_counts.first().holders, 0, 'f', 0);
+    return lines.join(QChar('\n'));
+}
 QString AShareProfilePanel::render_html(const StockProfile& p, bool dark) {
     const QString muted = dark ? "#8b95a5" : "#5e6673", border = dark ? "#232a35" : "#dadfe6";
     const QString up = "#e8394f", down = "#14a37f"; // red up / green down, readable on both themes
