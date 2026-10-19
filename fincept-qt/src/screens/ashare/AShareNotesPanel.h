@@ -1,5 +1,6 @@
 #pragma once
 #include "services/ashare/AShareNotes.h"
+
 #include <QWidget>
 
 class QCheckBox;
@@ -18,7 +19,7 @@ class AShareNotesPanel : public QWidget {
   public:
     explicit AShareNotesPanel(QWidget* parent = nullptr);
     void reload();
-    void filter_ticker(const QString& symbol);              // "" clears the filter
+    void filter_ticker(const QString& symbol); // "" clears the filter
     void new_note_for(const QString& symbol, const QString& name);
     QVector<services::ashare::Note> notes_for(const QString& symbol) const;
     int note_count() const { return notes_.size(); }
@@ -27,8 +28,10 @@ class AShareNotesPanel : public QWidget {
   signals:
     void notes_changed();
     void open_stock(const QString& symbol);
+
   protected:
     void paintEvent(QPaintEvent*) override;
+
   private:
     void refresh_list();
     void show_note(const QString& id);
@@ -62,6 +65,7 @@ class AShareStockNotes : public QWidget {
   signals:
     void show_all(const QString& symbol);
     void create(const QString& symbol, const QString& name);
+
   private:
     AShareNotesPanel* notes_;
     QString symbol_, name_;

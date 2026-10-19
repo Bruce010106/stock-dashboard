@@ -7,8 +7,15 @@
 #include <QUrl>
 
 namespace fincept::services::ashare {
-struct ResearchItem { QString title, time, source, summary; QUrl url; };
-struct ResearchFeed { QVector<ResearchItem> items; QString source; QDateTime fetched; };
+struct ResearchItem {
+    QString title{}, time{}, source{}, summary{};
+    QUrl url{};
+};
+struct ResearchFeed {
+    QVector<ResearchItem> items{};
+    QString source{};
+    QDateTime fetched{};
+};
 bool parse_research(const QByteArray& body, const QString& kind, ResearchFeed& feed, QString& error);
 // Native adaptation of a-stock-data examples; see ashare/THIRD_PARTY.md.
 class AShareResearchService : public QObject {
@@ -19,9 +26,12 @@ class AShareResearchService : public QObject {
   signals:
     void ready(const QString& symbol, const QString& kind, const fincept::services::ashare::ResearchFeed& feed);
     void failed(const QString& symbol, const QString& kind, const QString& error);
+
   private:
     void pump();
-    struct Job { QString symbol, kind, key; };
+    struct Job {
+        QString symbol{}, kind{}, key{};
+    };
     QNetworkAccessManager network_;
     QQueue<Job> queue_;
     QSet<QString> pending_;
@@ -29,4 +39,4 @@ class AShareResearchService : public QObject {
     QHash<QString, QDateTime> attempted_;
     bool busy_ = false;
 };
-}
+} // namespace fincept::services::ashare

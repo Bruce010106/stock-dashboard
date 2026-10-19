@@ -1,0 +1,88 @@
+name: A-share board
+
+# CI for this fork: build the standalone AShareBoard target with warnings as errors on
+# the three compilers upstream uses (MinGW / GCC / Clang), run AShareTests, and check
+# formatting of the A-share sources. Upstream Fincept workflows (full terminal build,
+# nightly sanitizers, release, label/topic sync, …) live in .github/workflows-upstream/
+# and do not run here; see the README there to restore one.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ashare-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  QT_VERSION: "6.8.3"
+
+jobs:
+  format:
+    name: clang-format (A-share sources)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install clang-format 18.1.3 (same version as the local .tools venv)
+        run: python3 -m pip install --user clang-format==18.1.3
+      - name: Check formatting (whole files)
+        working-directory: fincept-qt
+        run: |
+          set -euo pipefail
+          files=$(git ls-files 'src/screens/ashare/*.cpp' 'src/screens/ashare/*.h' 'src/services/ashare/*.cpp' 'src/services/ashare/*.h')
+          ~/.local/bin/clang-format --version
+          ~/.local/bin/clang-format --dry-run --Werror --style=file $files
+
+  build:
+    name: ${{ matrix.name }} build + tests
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: Windows MinGW, os: windows-2022, arch: win64_mingw, tools: tools_mingw1310 }
+          - { name: Linux GCC, os: ubuntu-24.04, arch: linux_gcc_64, tools: "" }
+          - { name: macOS Clang, os: macos-14, arch: clang_64, tools: "" }
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt ${{ env.QT_VERSION }}
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          arch: ${{ matrix.arch }}
+          tools: ${{ matrix.tools }}
+          cache: true
+
+      - name: Install Ninja
+        run: python -m pip install ninja==1.11.1.1
+
+      - name: Use the MinGW toolchain shipped with Qt
+        if: runner.os == 'Windows'
+        shell: bash
+        run: echo "${IQTA_TOOLS}/mingw1310_64/bin" >> "$GITHUB_PATH"
+
+      - name: Linux runtime libraries for offscreen widget tests
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y libgl1-mesa-dev libegl1 libxkbcommon0 libfontconfig1
+
+      - name: Configure (warnings are errors)
+        shell: bash
+        run: |
+          extra=""
+          if [ "$RUNNER_OS" = "Windows" ]; then extra="-DCMAKE_CXX_COMPILER=g++"; fi
+          cmake -S fincept-qt/ashare -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DASHARE_WERROR=ON $extra
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: AShareTests
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --test-dir build --output-on-failure

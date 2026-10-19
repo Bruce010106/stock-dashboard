@@ -1,7 +1,9 @@
 #pragma once
 #include "services/ashare/AShareAiService.h"
+
 #include <QDialog>
 #include <QWidget>
+
 #include <functional>
 
 class QCheckBox;
@@ -16,6 +18,7 @@ class AShareAiSettingsDialog : public QDialog {
     Q_OBJECT
   public:
     explicit AShareAiSettingsDialog(QWidget* parent = nullptr);
+
   private:
     void load_provider(const QString& provider);
     void save();
@@ -36,6 +39,7 @@ class AShareAiPanel : public QWidget {
     void set_dark(bool dark);
     QString last_context() const { return last_context_; }
     static QString system_prompt();
+
   private:
     void ask(const QString& question);
     void render();

@@ -1873,6 +1873,8 @@ set(SCREEN_SOURCES
     src/screens/ashare/AShareProfilePanel.cpp
     src/screens/ashare/AShareChart.cpp
     src/screens/ashare/AShareScreen.cpp
+    src/screens/ashare/AShareScreen_Watchlist.cpp
+    src/screens/ashare/AShareScreen_Stock.cpp
 
     # Asia Markets
     src/screens/asia_markets/AsiaMarketsScreen.cpp
@@ -2217,6 +2219,8 @@ set_source_files_properties(
     src/screens/ashare/AShareProfilePanel.cpp
     src/screens/ashare/AShareChart.cpp
     src/screens/ashare/AShareScreen.cpp
+    src/screens/ashare/AShareScreen_Watchlist.cpp
+    src/screens/ashare/AShareScreen_Stock.cpp
     src/screens/akshare/AkShareScreen.cpp
     src/screens/algo_trading/AlgoTradingScreen.cpp
     src/screens/algo_trading/DeploymentDashboard.cpp

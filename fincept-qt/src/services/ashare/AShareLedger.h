@@ -9,24 +9,24 @@ namespace fincept::services::ashare {
 // (Transaction / HoldingWithQuote); calculations are re-implemented in C++ so the
 // standalone board needs no Python. Cost basis uses the weighted-average method.
 struct LedgerTxn {
-    QString id, symbol, name, type, note; // type: BUY, SELL, DIVIDEND
-    QDate date;
+    QString id{}, symbol{}, name{}, type{}, note{}; // type: BUY, SELL, DIVIDEND
+    QDate date{};
     double quantity = 0; // shares (BUY / SELL); unused for DIVIDEND
     double price = 0;    // per share; for DIVIDEND the total cash received
     double fee = 0;      // commission + stamp duty + transfer fee, entered by the user
 };
 struct Position {
-    QString symbol, name;
+    QString symbol{}, name{};
     double quantity = 0, cost = 0; // cost = remaining cost basis including fees
     double realized = 0, dividends = 0;
-    QDate first_date;
+    QDate first_date{};
     double avg_cost() const { return quantity > 0 ? cost / quantity : 0; }
 };
 struct LedgerResult {
-    QVector<Position> open;      // quantity > 0
-    QVector<Position> closed;    // fully sold, kept for realised P&L
+    QVector<Position> open{};   // quantity > 0
+    QVector<Position> closed{}; // fully sold, kept for realised P&L
     double realized = 0, dividends = 0, fees = 0;
-    QStringList warnings;
+    QStringList warnings{};
 };
 LedgerResult compute_ledger(QVector<LedgerTxn> txns);
 bool validate_txn(const LedgerTxn& txn, QString& error);

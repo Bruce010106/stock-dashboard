@@ -1,6 +1,7 @@
 #pragma once
 #include "screens/common/IStatefulScreen.h"
 #include "services/ashare/AShareMarketService.h"
+
 #include <QHash>
 #include <QSet>
 #include <QWidget>
@@ -46,9 +47,19 @@ class AShareScreen : public QWidget, public IStatefulScreen {
     QString ai_context(bool include_position) const;
   signals:
     void data_loaded();
+
   protected:
     void paintEvent(QPaintEvent*) override;
+
   private:
+    // Construction steps (AShareScreen.cpp / _Watchlist.cpp / _Stock.cpp).
+    QWidget* build_top_bar();
+    QWidget* build_watchlist();
+    QWidget* build_stock_content();
+    void load_preferences();
+    void connect_preference_signals();
+    void connect_data();
+    void install_hotkeys();
     bool intraday() const;
     void open_stock(const QString& symbol);
     services::ashare::KPeriod current_period() const;
@@ -71,7 +82,7 @@ class AShareScreen : public QWidget, public IStatefulScreen {
     void apply_theme(bool dark);
     services::ashare::AShareMarketService* service_;
     QHash<QString, services::ashare::Quote> quotes_;
-    QHash<QString, QVector<services::ashare::Candle>> candles_;   // keyed by kline_key()
+    QHash<QString, QVector<services::ashare::Candle>> candles_; // keyed by kline_key()
     QHash<QString, QDateTime> kline_fetched_;
     QHash<QString, QString> errors_;
     QStringList symbols_;
@@ -110,4 +121,4 @@ class AShareScreen : public QWidget, public IStatefulScreen {
     AShareNotesPanel* notes_ = nullptr;
     AShareStockNotes* stock_notes_ = nullptr;
 };
-}
+} // namespace fincept::screens
