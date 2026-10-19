@@ -227,7 +227,9 @@ $env:FINCEPT_SMOKE_OUTPUT = "$PWD/ashare-build/workbench-smoke"
 ```
 
 - CI：`.github/workflows/ashare.yml` 在 Windows（MinGW）、Linux（GCC）、macOS（Clang）上构建独立看板并运行 `AShareTests`，
-  另检查 A 股源码格式。上游 Fincept 的工作流已移到 `.github/workflows-upstream/`，不再执行。
+  另检查 A 股源码格式；并在 Linux 上以 AddressSanitizer + UndefinedBehaviorSanitizer 编译看板与测试后运行 `AShareTests`
+  （只插桩 A 股代码，Qt 为普通构建，关闭泄漏检测），检查越界、释放后使用、整数溢出等问题。
+  上游 Fincept 的工作流已移到 `.github/workflows-upstream/`，不再执行。
 - `AShareScreen` 按职责拆分为 `AShareScreen.cpp`（框架、视图、偏好、热键）、`AShareScreen_Watchlist.cpp`（自选、分组、指数条）、
   `AShareScreen_Stock.cpp`（个股页、图表控制、AI 数据快照），共用辅助函数在 `AShareScreen_internal.h`。
 
