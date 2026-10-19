@@ -182,7 +182,10 @@ class AShareTests : public QObject {
         root["data"] = QJsonObject{{"sh000001", stock}};
         Quote q; QString error; QVERIFY(parse_quote(root, "sh000001", q, error));
         QCOMPARE(q.minutes[0].average, 0.0); QCOMPARE(q.volume, 3000.0);
-        const QJsonArray rows{QJsonArray{"2026-10-13", "3000", "3100", "3200", "2900", "1000"}};
+        // append(), not QJsonArray{QJsonArray{...}}: with one element Clang (CWG 2137) copies
+        // the inner array instead of nesting it, which produced a flat row on macOS.
+        QJsonArray rows;
+        rows.append(QJsonArray{"2026-10-13", "3000", "3100", "3200", "2900", "1000"});
         root["data"] = QJsonObject{{"sh000001", QJsonObject{{"day", rows}}}};
         QVector<Candle> candles; QVERIFY(parse_candles(root, "sh000001", candles, error));
         QCOMPARE(candles[0].close, 3100.0); QCOMPARE(candles[0].volume, 100000.0);
@@ -257,7 +260,8 @@ class AShareTests : public QObject {
     }
     void star_daily_volume_is_shares() {
         QVector<Candle> candles; QString error;
-        const QJsonArray rows{QJsonArray{"2026-10-13", "10", "11", "12", "9", "12345"}};
+        QJsonArray rows; // single row: append() so Clang nests it (see index_units_and_daily_contract)
+        rows.append(QJsonArray{"2026-10-13", "10", "11", "12", "9", "12345"});
         for (const auto& symbol : {QString("sh688001"), QString("sh689009"), QString("sh600519")}) {
             const QJsonObject root{{"code", 0}, {"data", QJsonObject{{symbol, QJsonObject{{"qfqday", rows}}}}}};
             QVERIFY(parse_candles(root, symbol, candles, error));
