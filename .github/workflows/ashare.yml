@@ -86,3 +86,43 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: ctest --test-dir build --output-on-failure
+
+  # Memory-safety check, the board-only counterpart of upstream's nightly ASan/UBSan job
+  # (.github/workflows-upstream/nightly-sanitizers.yml). It instruments only the A-share
+  # code and AShareTests, so it is fast enough to run on every push and PR. Qt itself is
+  # the stock, uninstrumented build. Leak detection is off, as upstream does, because
+  # Qt's process-lifetime singletons would drown real reports.
+  sanitizers:
+    name: Linux ASan + UBSan tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt ${{ env.QT_VERSION }}
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          arch: linux_gcc_64
+          cache: true
+
+      - name: Install Ninja and runtime libraries
+        run: |
+          python -m pip install ninja==1.11.1.1
+          sudo apt-get update -qq
+          sudo apt-get install -y libgl1-mesa-dev libegl1 libxkbcommon0 libfontconfig1
+
+      - name: Configure (ASan + UBSan, warnings are errors)
+        run: |
+          SAN="-fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=undefined"
+          cmake -S fincept-qt/ashare -B build-san -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DASHARE_WERROR=ON \
+            -DCMAKE_CXX_FLAGS="$SAN" -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined"
+
+      - name: Build
+        run: cmake --build build-san --parallel
+
+      - name: AShareTests under ASan + UBSan
+        env:
+          QT_QPA_PLATFORM: offscreen
+          ASAN_OPTIONS: detect_leaks=0:abort_on_error=1:print_stacktrace=1:strict_string_checks=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: ctest --test-dir build-san --output-on-failure
