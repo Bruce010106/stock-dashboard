@@ -1,5 +1,6 @@
 #pragma once
 #include "services/ashare/AShareResearchService.h"
+
 #include <QWidget>
 class QComboBox;
 class QTextBrowser;
@@ -11,6 +12,7 @@ class AShareResearchPanel : public QWidget {
     explicit AShareResearchPanel(QWidget* parent = nullptr);
     void set_symbol(const QString& symbol);
     void set_dark(bool dark);
+
   private:
     void load();
     QString symbol_;
@@ -20,4 +22,4 @@ class AShareResearchPanel : public QWidget {
     QLabel* status_;
     services::ashare::AShareResearchService* service_;
 };
-}
+} // namespace fincept::screens

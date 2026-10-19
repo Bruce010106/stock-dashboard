@@ -1,5 +1,6 @@
 #pragma once
 #include "services/ashare/AShareProfileService.h"
+
 #include <QWidget>
 class QLabel;
 class QTextBrowser;
@@ -15,6 +16,7 @@ class AShareProfilePanel : public QWidget {
     static QString render_html(const services::ashare::StockProfile& profile, bool dark);
     // Plain-text F10 digest for the AI context; empty unless this symbol's profile is loaded.
     QString summary_for(const QString& symbol) const;
+
   private:
     void load(bool force);
     void render();
@@ -25,4 +27,4 @@ class AShareProfilePanel : public QWidget {
     QTextBrowser* text_;
     services::ashare::AShareProfileService* service_;
 };
-}
+} // namespace fincept::screens

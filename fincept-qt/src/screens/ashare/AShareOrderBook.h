@@ -1,5 +1,6 @@
 #pragma once
 #include "services/ashare/AShareMarketService.h"
+
 #include <QDateTime>
 #include <QWidget>
 
@@ -16,8 +17,10 @@ class AShareOrderBook : public QWidget {
     void clear(const QString& message);
     int level_count() const;
     int trade_count() const { return trades_.size(); }
+
   protected:
     void paintEvent(QPaintEvent*) override;
+
   private:
     services::ashare::Quote quote_;
     QVector<services::ashare::Trade> trades_;
@@ -25,4 +28,4 @@ class AShareOrderBook : public QWidget {
     QDateTime trades_fetched_;
     QString message_ = QStringLiteral("选择个股以查看盘口"), trades_error_;
 };
-}
+} // namespace fincept::screens

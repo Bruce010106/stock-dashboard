@@ -1,6 +1,7 @@
 #pragma once
 #include "services/ashare/AShareLedger.h"
 #include "services/ashare/AShareMarketService.h"
+
 #include <QDateTime>
 #include <QHash>
 #include <QWidget>
@@ -15,8 +16,9 @@ class QTimer;
 namespace fincept::screens {
 // One valued holding: ledger position + latest quote.
 struct ValuedHolding {
-    services::ashare::Position position;
-    double price = 0, previous = 0, market_value = 0, unrealized = 0, unrealized_pct = 0, day_pnl = 0, day_pct = 0, weight = 0;
+    services::ashare::Position position{};
+    double price = 0, previous = 0, market_value = 0, unrealized = 0, unrealized_pct = 0, day_pnl = 0, day_pct = 0,
+           weight = 0;
     bool priced = false;
 };
 QVector<QRectF> squarify(const QVector<double>& values, const QRectF& area);
@@ -29,12 +31,17 @@ class AShareHoldingsMap : public QWidget {
     enum class Mode { Pnl, Day, Weight };
     explicit AShareHoldingsMap(QWidget* parent = nullptr);
     void set_holdings(const QVector<ValuedHolding>& holdings);
-    void set_mode(Mode mode) { mode_ = mode; update(); }
+    void set_mode(Mode mode) {
+        mode_ = mode;
+        update();
+    }
   signals:
     void holding_clicked(const QString& symbol);
+
   protected:
     void paintEvent(QPaintEvent*) override;
     void mousePressEvent(QMouseEvent*) override;
+
   private:
     QVector<ValuedHolding> holdings_;
     QVector<QRectF> tiles_;
@@ -46,8 +53,8 @@ class ASharePortfolioPanel : public QWidget {
   public:
     explicit ASharePortfolioPanel(QWidget* parent = nullptr);
     void set_active(bool active);
-    void reload();                 // re-read the ledger file
-    void rerender();               // theme switch
+    void reload();   // re-read the ledger file
+    void rerender(); // theme switch
     // Plain-text summary of the user's position in one stock (for the AI context, opt-in).
     QString position_summary(const QString& symbol) const;
     QVector<ValuedHolding> holdings() const { return valued_; }
@@ -56,8 +63,10 @@ class ASharePortfolioPanel : public QWidget {
   signals:
     void open_stock(const QString& symbol);
     void data_loaded();
+
   protected:
     void paintEvent(QPaintEvent*) override;
+
   private:
     void recompute();
     void render();

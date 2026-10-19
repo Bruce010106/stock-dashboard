@@ -1,5 +1,6 @@
 #pragma once
 #include "services/ashare/AShareOverviewService.h"
+
 #include <QDateTime>
 #include <QHash>
 #include <QWidget>
@@ -22,11 +23,13 @@ class AShareHeatmap : public QWidget {
     QSize sizeHint() const override { return {640, 300}; }
   signals:
     void sector_clicked(const QString& code);
+
   protected:
     void paintEvent(QPaintEvent*) override;
     void mousePressEvent(QMouseEvent*) override;
     void mouseMoveEvent(QMouseEvent*) override;
     void leaveEvent(QEvent*) override;
+
   private:
     QVector<QRectF> layout_tiles() const;
     QVector<services::ashare::Sector> sectors_;
@@ -41,8 +44,10 @@ class AShareBreadthChart : public QWidget {
     explicit AShareBreadthChart(QWidget* parent = nullptr);
     void set_breadth(const services::ashare::Breadth& breadth);
     void set_message(const QString& message);
+
   protected:
     void paintEvent(QPaintEvent*) override;
+
   private:
     services::ashare::Breadth breadth_;
     QString message_ = QStringLiteral("正在加载涨跌分布…");
@@ -62,8 +67,10 @@ class AShareMarketPanel : public QWidget {
   signals:
     void open_stock(const QString& symbol);
     void data_loaded();
+
   protected:
     void paintEvent(QPaintEvent*) override;
+
   private:
     void render_breadth();
     void render_sectors();
@@ -75,10 +82,12 @@ class AShareMarketPanel : public QWidget {
     bool active_ = false;
     QHash<QString, QDateTime> fetched_;
     QHash<QString, QString> errors_;
-    services::ashare::Breadth breadth_; bool has_breadth_ = false;
+    services::ashare::Breadth breadth_;
+    bool has_breadth_ = false;
     QHash<QString, QVector<services::ashare::Sector>> sectors_;
     QHash<QString, services::ashare::LimitPool> pools_;
-    QVector<services::ashare::BillboardRow> billboard_; bool has_billboard_ = false;
+    QVector<services::ashare::BillboardRow> billboard_;
+    bool has_billboard_ = false;
     QVector<services::ashare::BoardStock> board_stocks_;
     QString selected_board_;
     QLabel *updown_, *limits_, *turnover_, *northbound_, *board_title_, *board_stats_, *status_;

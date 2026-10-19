@@ -215,6 +215,22 @@ $env:FINCEPT_SMOKE_OUTPUT = "$PWD/ashare-build/workbench-smoke"
 脚本传入 `-no-canonical-prefixes`，避免 MinGW 将英文目录联接还原为不能链接的中文路径。
 本机个人自选存储在 Windows 用户配置 `AShareBoard/Personal`，不向上游账号同步。
 
+## 代码规范与 CI
+
+- A 股目标默认开启与上游 CI 相同的告警策略：GCC/Clang 为 `-Wall -Wextra -Wpedantic -Werror`，MSVC 为 `/W4 /permissive- /WX`
+  （CMake 选项 `ASHARE_WERROR`，默认 ON）。2026-10-16 曾因结构体聚合初始化缺字段导致 Linux/macOS 构建失败，
+  现在所有 A 股数据结构成员都带默认初始化，本地 MinGW 也会按错误处理同类告警。
+- 格式：`.tools/venv` 中安装 `clang-format==18.1.3`，按 `fincept-qt/.clang-format` 格式化：
+
+```powershell
+./.tools/venv/Scripts/clang-format.exe -i --style=file (Get-ChildItem fincept-qt/src/screens/ashare,fincept-qt/src/services/ashare -File)
+```
+
+- CI：`.github/workflows/ashare.yml` 在 Windows（MinGW）、Linux（GCC）、macOS（Clang）上构建独立看板并运行 `AShareTests`，
+  另检查 A 股源码格式。上游 Fincept 的工作流已移到 `.github/workflows-upstream/`，不再执行。
+- `AShareScreen` 按职责拆分为 `AShareScreen.cpp`（框架、视图、偏好、热键）、`AShareScreen_Watchlist.cpp`（自选、分组、指数条）、
+  `AShareScreen_Stock.cpp`（个股页、图表控制、AI 数据快照），共用辅助函数在 `AShareScreen_internal.h`。
+
 ## 验证
 
 `AShareTests`（43 项）覆盖代码识别、交易时段、分时排序和单位换算、跨交易日隔离、前复权约束、空数据与横盘绘图，

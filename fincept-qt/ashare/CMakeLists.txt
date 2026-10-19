@@ -41,21 +41,35 @@ add_library(ashare_board STATIC
     ${AS_SRC}/screens/ashare/AShareChart.cpp
     ${AS_SRC}/screens/ashare/AShareChart.h
     ${AS_SRC}/screens/ashare/AShareScreen.cpp
+    ${AS_SRC}/screens/ashare/AShareScreen_Watchlist.cpp
+    ${AS_SRC}/screens/ashare/AShareScreen_Stock.cpp
+    ${AS_SRC}/screens/ashare/AShareScreen_internal.h
     ${AS_SRC}/screens/ashare/AShareScreen.h)
 target_include_directories(ashare_board PUBLIC "${AS_SRC}")
 target_link_libraries(ashare_board PUBLIC Qt6::Widgets Qt6::Network)
 if(WIN32)
     target_link_libraries(ashare_board PUBLIC crypt32) # DPAPI for the AI API key
 endif()
+# Same warning policy as the upstream CI (fincept-qt/CMakeLists.txt): warnings are errors,
+# so a break on GCC/Clang/MSVC is caught locally instead of on main.
+option(ASHARE_WERROR "Treat warnings as errors in A-share targets" ON)
+function(ashare_strict target)
+    if(MSVC)
+        target_compile_options(${target} PRIVATE /W4 /permissive- $<$<BOOL:${ASHARE_WERROR}>:/WX>)
+    else()
+        target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic $<$<BOOL:${ASHARE_WERROR}>:-Werror>)
+    endif()
+endfunction()
 if(MSVC)
     target_compile_options(ashare_board PUBLIC /utf-8)
-else()
-    target_compile_options(ashare_board PRIVATE -Wall -Wextra)
 endif()
+ashare_strict(ashare_board)
 qt_add_executable(AShareBoard WIN32 main.cpp)
 target_link_libraries(AShareBoard PRIVATE ashare_board)
+ashare_strict(AShareBoard)
 enable_testing()
 qt_add_executable(AShareTests tests.cpp)
 target_sources(AShareTests PRIVATE ${AS_SRC}/core/layout/LayoutTemplates.cpp ${AS_SRC}/core/layout/LayoutTypes.cpp)
 target_link_libraries(AShareTests PRIVATE ashare_board Qt6::Test)
+ashare_strict(AShareTests)
 add_test(NAME AShareTests COMMAND AShareTests -platform offscreen)

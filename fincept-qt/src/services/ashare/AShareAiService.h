@@ -7,7 +7,6 @@
 #include <QPointer>
 #include <QVector>
 
-
 namespace fincept::services::ashare {
 // AI assistant transport. Provider metadata, output caps and response parsing are
 // reused from Fincept's LLM layer (ProviderCatalog / ModelCatalog, plus two helpers copied from LlmHttpHelpers);
@@ -15,9 +14,11 @@ namespace fincept::services::ashare {
 struct AiSettings {
     QString provider = QStringLiteral("deepseek");
     QString model = QStringLiteral("deepseek-chat");
-    QString base_url; // empty = provider default
+    QString base_url{}; // empty = provider default
 };
-struct AiMessage { QString role, content; }; // role: "user" or "assistant"
+struct AiMessage {
+    QString role{}, content{};
+}; // role: "user" or "assistant"
 
 AiSettings load_ai_settings();
 void save_ai_settings(const AiSettings& settings);
@@ -39,6 +40,7 @@ QByteArray build_ai_body(const AiSettings& settings, const QString& system, cons
 class SseBuffer {
   public:
     QVector<QByteArray> feed(const QByteArray& chunk);
+
   private:
     QByteArray pending_;
 };
@@ -58,6 +60,7 @@ class AShareAiService : public QObject {
     void progress(const QString& visible_text, bool thinking);
     void finished(const QString& text);
     void failed(const QString& error);
+
   private:
     QNetworkAccessManager network_;
     QPointer<QNetworkReply> reply_;

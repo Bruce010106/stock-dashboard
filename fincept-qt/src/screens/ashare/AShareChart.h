@@ -1,6 +1,7 @@
 #pragma once
 #include "services/ashare/AShareIndicators.h"
 #include "services/ashare/AShareMarketService.h"
+
 #include <QWidget>
 
 namespace fincept::screens {
@@ -18,11 +19,13 @@ class AShareChart : public QWidget {
     void set_oscillator(Oscillator oscillator);
     void clear(const QString& message);
     int candle_count() const { return candles_.size(); }
+
   protected:
     void paintEvent(QPaintEvent*) override;
     void mouseMoveEvent(QMouseEvent*) override;
     void leaveEvent(QEvent*) override;
     void wheelEvent(QWheelEvent*) override;
+
   private:
     services::ashare::Quote quote_;
     QVector<services::ashare::Candle> candles_;
@@ -33,4 +36,4 @@ class AShareChart : public QWidget {
     Oscillator oscillator_ = Oscillator::MACD;
     int hover_ = -1, visible_days_ = 90;
 };
-}
+} // namespace fincept::screens
